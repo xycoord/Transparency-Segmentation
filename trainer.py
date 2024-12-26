@@ -95,6 +95,7 @@ def main():
     transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler = accelerator.prepare(
         transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler
     )
+    logger.info("Accelerator Prepared")
 
     # Precision (Mixed Precision?)
 

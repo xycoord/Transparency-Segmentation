@@ -1,0 +1,69 @@
+training:
+  batch_size: 
+    default: 32
+    type: int
+    help: Batch size for training
+  epochs:
+    default: 10
+    type: int
+    help: Number of epochs to train
+  lr:
+    default: 0.0001
+    type: float
+    help: Learning rate for training
+
+model:
+  base_model_path:
+    default: 'stabilityai/stable-diffusion-3.5-large'
+    type: str
+    help: Base model for transfer learning
+
+dataset:
+  dataset_path:
+    default: '/home/xycoord/models/Trans10k/'
+    type: str
+    help: Path to dataset
+  dataset_name:
+    default: 'trans10k'
+    type: str
+    help: Name of dataset
+  train_batch_size:
+    default: 1
+    type: int
+    help: Batch size for training
+  dataloader_num_workers:
+    default: 4
+    type: int
+    help: Number of workers for dataloader
+
+optimizer:
+  adam_beta1:
+    default: 0.9
+    type: float
+    help: Beta1 for Adam optimizer
+  adam_beta2:
+    default: 0.999
+    type: float
+    help: Beta2 for Adam optimizer
+  adam_weight_decay:
+    default: 0.0
+    type: float
+    help: Weight decay for Adam optimizer
+  adam_epsilon:
+    default: 1e-15
+    type: float
+    help: Epsilon for Adam optimizer
+
+learning_rate_scheduler:
+  lr_scheduler:
+    default: 'cosine'
+    type: str
+    help: Learning rate scheduler
+  lr_warmup_steps:
+    default: 1000
+    type: int
+    help: Number of warmup steps for learning rate scheduler
+  max_train_steps:
+    default: 1000
+    type: int
+    help: Maximum number of training steps
