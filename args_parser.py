@@ -1,3 +1,4 @@
+import torch
 import yaml
 import argparse
 
@@ -25,7 +26,21 @@ def create_parser_from_yaml(yaml_path):
     
     return parser
 
+def add_dtype_argument(args):
+    dtype_map = {
+        'bf16': torch.bfloat16,
+        'fp16': torch.float16,
+        'fp32': torch.float32
+    }
+    
+    if args.data_type in dtype_map:
+        args.torch_dtype = dtype_map[args.data_type]
+    else:
+        raise ValueError(f"Unknown data type: {args.data_type}")
+    return args
+
 def parse_args():
     parser = create_parser_from_yaml('config.yaml')
     args = parser.parse_args()
+    args = add_dtype_argument(args)
     return args

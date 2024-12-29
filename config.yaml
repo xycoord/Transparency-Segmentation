@@ -1,22 +1,18 @@
-training:
-  batch_size: 
-    default: 32
-    type: int
-    help: Batch size for training
-  epochs:
-    default: 10
-    type: int
-    help: Number of epochs to train
-  lr:
-    default: 0.0001
-    type: float
-    help: Learning rate for training
-
 model:
   base_model_path:
-    default: 'stabilityai/stable-diffusion-3.5-large'
+    default: 'stabilityai/stable-diffusion-3.5-medium'
     type: str
     help: Base model for transfer learning
+  data_type:
+    default: 'bf16'
+    type: str
+    help: Data type for training
+
+prompt_embeds:
+  prompt_embeds_path:
+    default: './precomputed_prompt_embeddings/'
+    type: str
+    help: Path to prompt embeds
 
 dataset:
   dataset_path:
@@ -28,13 +24,35 @@ dataset:
     type: str
     help: Name of dataset
   train_batch_size:
-    default: 1
+    default: 2
     type: int
     help: Batch size for training
   dataloader_num_workers:
     default: 4
     type: int
     help: Number of workers for dataloader
+
+training:
+  batch_size: 
+    default: 1 
+    type: int
+    help: Batch size for training
+  epochs:
+    default: 1
+    type: int
+    help: Number of epochs to train
+  max_train_steps:
+    default: null
+    type: int
+    help: Maximum number of training steps
+  lr:
+    default: 0.0001
+    type: float
+    help: Learning rate for training
+  gradient_accumulation_steps:
+    default: 1
+    type: int
+    help: Gradient accumulation steps
 
 optimizer:
   adam_beta1:
@@ -63,7 +81,28 @@ learning_rate_scheduler:
     default: 1000
     type: int
     help: Number of warmup steps for learning rate scheduler
-  max_train_steps:
-    default: 1000
-    type: int
-    help: Maximum number of training steps
+
+noise:
+  weighting_scheme:
+    default: 'logit_normal'
+    type: str
+    help: Weighting scheme for noise ("sigma_sqrt", "logit_normal", "mode", "cosmap")
+  logit_mean:
+    default: 0.0
+    type: float
+    help: Mean for logit_normal weighting scheme
+  logit_std:
+    default: 1.0
+    type: float
+    help: Std for logit_normal weighting scheme
+  mode_scale:
+    default: 1.29
+    type: float
+    help: Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.
+
+misc:
+  max_grad_norm:
+    default: 1.0
+    type: float
+    help: Maximum gradient norm
+      
