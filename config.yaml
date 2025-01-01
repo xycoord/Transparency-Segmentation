@@ -33,6 +33,10 @@ dataset:
     help: Number of workers for dataloader
 
 training:
+  resume_from_checkpoint:
+    default: latest
+    type: str
+    help: Path to checkpoint to resume from
   batch_size: 
     default: 1 
     type: int
@@ -53,6 +57,10 @@ training:
     default: 1
     type: int
     help: Gradient accumulation steps
+  save_checkpoint_steps:
+    default: 200
+    type: int
+    help: Save checkpoint every n steps
 
 optimizer:
   adam_beta1:
@@ -106,3 +114,8 @@ misc:
     type: float
     help: Maximum gradient norm
       
+project_config:
+  output_dir:
+    default: 'output'
+    type: str
+    help: Output directory

@@ -1,9 +1,14 @@
 import copy
+import math
+from checkpoint_utils import get_checkpoint_path, get_global_step_from_checkpoint
 import torch
 from tqdm import tqdm
 from args_parser import parse_args
+import os
+from pathlib import Path
 
 from accelerate import Accelerator
+from accelerate.utils import ProjectConfiguration
 
 from accelerate.logging import get_logger
 import logging
@@ -13,6 +18,7 @@ from diffusers import AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscre
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_loss_weighting_for_sd3
+from diffusers.utils.torch_utils import is_compiled_module
 
 from dataset_configuration import prepare_dataset
 from utils import compute_max_train_steps, load_prompt_embeds, get_noise_ratio, sample_timesteps
@@ -23,9 +29,19 @@ def main():
 
     args = parse_args()
 
+    # ==== Setup Directories ====
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logging_dir = output_dir / "logs"
+    logging_dir.mkdir(parents=True, exist_ok=True) # Logging directory doesn't seem to be used
+    checkpoint_dir = output_dir / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    # ==== Accelerator ====
     accelerator = Accelerator(
         mixed_precision=args.data_type,
     )
+
 
     # ==== Logging ====
     # Make one log on every process with the configuration for debugging.
@@ -43,6 +59,10 @@ def main():
         diffusers.utils.logging.set_verbosity_error()
     
 
+    # Set up WandB logging 
+
+
+
     # Mixed Precision
     inf_dtype = args.torch_dtype # VAE etc.
     train_dtype = torch.float32 # Transformer etc.
@@ -50,28 +70,28 @@ def main():
     logger.info(f"Inference Data Type: {inf_dtype}")
     logger.info(f"Training Data Type: {train_dtype}")
     logger.info(f"Device: {device}")
-    if hasattr(accelerator.state, 'deepspeed_plugin') and accelerator.state.deepspeed_plugin is not None:
-        logger.info(f"Deepspeed config: {accelerator.state.deepspeed_plugin.deepspeed_config}")
-    else:
-        logger.info("DeepSpeed not configured")
 
-    # Set up logging (accelerate, wandb)
 
-    # Set up output directory
+    # ======== LOAD MODELS ========
 
-    '''--Non-NN Modules Definiton--'''
     # ==== Load Precomputed Prompt Embeddings ====
     prompt_embeds, pooled_prompt_embeds = load_prompt_embeds(args.prompt_embeds_path)
     prompt_embeds = prompt_embeds.to(train_dtype).to(device)
     pooled_prompt_embeds = pooled_prompt_embeds.to(train_dtype).to(device)
 
     # ==== Load VAE ====
-    vae = AutoencoderKL.from_pretrained(args.base_model_path, subfolder="vae", torch_dtype=inf_dtype, use_safetensors=True).to(device).requires_grad_(False)
+    vae = AutoencoderKL.from_pretrained(
+        args.base_model_path, 
+        subfolder="vae", 
+        torch_dtype=inf_dtype, 
+        use_safetensors=True
+    )
+    vae = vae.to(device).requires_grad_(False)
     vae.eval() # We're not training the VAE
     vae_image_processor = VaeImageProcessor(do_normalize=True)
     logger.info("VAE Loaded")
 
-    # Load Transformer (train())
+    # ==== Load Transformer ====
     transformer = SD3Transformer2DModel.from_pretrained(
         args.base_model_path, 
         subfolder="transformer",
@@ -84,7 +104,6 @@ def main():
     )
     transformer.requires_grad_(True)
     transformer.enable_gradient_checkpointing()
-    logger.info(f"Transformer type: {transformer.dtype}")
     logger.info("Transformer Loaded")
 
     # EMA Transformer? (EMA Unet)
@@ -96,12 +115,9 @@ def main():
     noise_scheduler_copy = copy.deepcopy(noise_scheduler)
     logger.info("Noise Scheduler Loaded")
 
-
-
-    # Gradient Checkpointing?
-
         
-    # ==== Data Loaders ==== 
+    # ======== DATA LOADERS ======== 
+
     with accelerator.main_process_first():
         (train_loader, val_loader, test_loader), dataset_config_dict = prepare_dataset(
             data_name=args.dataset_name,
@@ -110,16 +126,15 @@ def main():
             test_batch=1, # args.test_batch_size, what is this?
             datathread=args.dataloader_num_workers,
             logger=logger)
-
+    
+    num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
 
 
     # ======== LEARNING RATE AND OPTIMIZER ========
 
     # ==== Scale Learning Rate ====
     prescaled_lr = args.lr
-    args.lr = (
-            prescaled_lr * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
-        )
+    args.lr = prescaled_lr * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
     logger.info(f"Learning Rate Scaled: {prescaled_lr} -> {args.lr}")
 
     # ==== Optimizer ====
@@ -149,22 +164,38 @@ def main():
     logger.info("Learning Rate Scheduler Initialized")
 
 
-    # ==== Prepare all with Accelerator ====
+    # ======== Prepare all with Accelerator ========
     transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler = accelerator.prepare(
         transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler
     )
     logger.info("Accelerator Prepared")
 
-    # Precision (Mixed Precision?)
 
-    # Resume from checkpoint
+    # ======== Resume from Checkpoint ========
+    if args.resume_from_checkpoint:
+        checkpoint_name = args.resume_from_checkpoint
+        checkpoint_path = get_checkpoint_path(checkpoint_name, checkpoint_dir)
 
+        if checkpoint_path is None or not checkpoint_path.exists():
+            logger.info(f"Checkpoint '{checkpoint_name}' does not exist. Starting a new training run.")
+            initial_global_step = 0
+        else: # Load Checkpoint
+            accelerator.wait_for_everyone()
+            accelerator.load_state(checkpoint_path)
+            global_step = get_global_step_from_checkpoint(checkpoint_path)
+            initial_global_step = global_step
+    else:
+        logger.info("Starting a new training run.")
+        initial_global_step = 0
+
+    global_step = initial_global_step
+    first_epoch = global_step // num_update_steps_per_epoch
+    steps_in_current_epoch = global_step % num_update_steps_per_epoch
+
+    train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
+                
 
     # ======== TRAINING LOOP ========
-
-    initial_global_step = 0
-    global_step = initial_global_step
-    first_epoch = 0
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
@@ -176,7 +207,7 @@ def main():
 
     for epoch in range(first_epoch, args.epochs):
         transformer.train()
-        for step, batch in enumerate(train_loader):
+        for batch in train_loader:
             with accelerator.accumulate(transformer):
                 images, masks, names = batch 
                 batch_size = masks.shape[0]
@@ -223,13 +254,6 @@ def main():
                 prompt_embeds = prompt_embeds.to(torch.bfloat16)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(torch.bfloat16)
 
-
-                # logger.info(f"Transformer Input Type: {transformer_input.dtype}")
-                # logger.info(f"Time Steps Type: {timesteps.dtype}")
-                # logger.info(f"Prompt Embeds Type: {prompt_embeds.dtype}")
-                # logger.info(f"Pooled Prompt Embeds Type: {pooled_prompt_embeds.dtype}")
-                # logger.info(f"transformer type: {transformer.dtype}")
-
                 model_pred = transformer(
                         hidden_states=transformer_input,
                         timestep=timesteps,
@@ -272,13 +296,16 @@ def main():
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
 
-                # break
+                # ==== Save checkpoint ====
+                if global_step % args.save_checkpoint_steps == 0 and global_step > 0:
+                    accelerator.wait_for_everyone()
+                    accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
 
+                # ==== Validation ====
+
+
+    accelerator.end_training()
                              
-    
-
-
-    # Validate regularly
 
 if __name__=="__main__":
     main()
