@@ -64,11 +64,11 @@ def main():
 
 
     # Mixed Precision
-    inf_dtype = args.torch_dtype # VAE etc.
-    train_dtype = torch.float32 # Transformer etc.
+    half_dtype = args.torch_dtype # VAE etc.
+    full_dtype = torch.float32 # Transformer etc.
     device = accelerator.device
-    logger.info(f"Inference Data Type: {inf_dtype}")
-    logger.info(f"Training Data Type: {train_dtype}")
+    logger.info(f"Inference Data Type: {half_dtype}")
+    logger.info(f"Training Data Type: {full_dtype}")
     logger.info(f"Device: {device}")
 
 
@@ -76,14 +76,14 @@ def main():
 
     # ==== Load Precomputed Prompt Embeddings ====
     prompt_embeds, pooled_prompt_embeds = load_prompt_embeds(args.prompt_embeds_path)
-    prompt_embeds = prompt_embeds.to(train_dtype).to(device)
-    pooled_prompt_embeds = pooled_prompt_embeds.to(train_dtype).to(device)
+    prompt_embeds = prompt_embeds.to(device)
+    pooled_prompt_embeds = pooled_prompt_embeds.to(device)
 
     # ==== Load VAE ====
     vae = AutoencoderKL.from_pretrained(
         args.base_model_path, 
         subfolder="vae", 
-        torch_dtype=inf_dtype, 
+        torch_dtype=half_dtype, 
         use_safetensors=True
     )
     vae = vae.to(device).requires_grad_(False)
@@ -96,7 +96,7 @@ def main():
         args.base_model_path, 
         subfolder="transformer",
         # use_safetensors=True,
-        torch_dtype=train_dtype,
+        torch_dtype=full_dtype, # Load with full precision for safety
         low_cpu_mem_usage=False,
         ignore_mismatched_sizes=True,
         in_channels=32, # 16 for masks + 16 for images 
@@ -216,8 +216,8 @@ def main():
                 masks_stacked = masks.unsqueeze(1).repeat(1,3,1,1).float() # dim 0 is batch?
 
                 # ==== Preprare for Encoder ====
-                images_normalized = vae_image_processor.normalize(images).to(device).to(inf_dtype)
-                masks_normalized= vae_image_processor.normalize(masks_stacked).to(device).to(inf_dtype)
+                images_normalized = vae_image_processor.normalize(images).to(device).to(half_dtype)
+                masks_normalized= vae_image_processor.normalize(masks_stacked).to(device).to(half_dtype)
                 
                 # ==== Encode ====
                 image_latents = vae.encode(images_normalized).latent_dist.sample()
@@ -227,9 +227,6 @@ def main():
                 # Scale so latents behave well with diffusion
                 image_latents = (image_latents - vae.config.shift_factor) * vae.config.scaling_factor
                 mask_latents = (mask_latents - vae.config.shift_factor) * vae.config.scaling_factor
-                # Transformer is trained with full precision
-                image_latents = image_latents.to(train_dtype)
-                mask_latents = mask_latents.to(train_dtype)
 
                 # ==== Noise ====
                 noise = torch.randn_like(mask_latents)
@@ -242,17 +239,13 @@ def main():
                     mode_scale=args.mode_scale
                 ).to(device)
 
-                noise_ratio = get_noise_ratio(timesteps, noise_scheduler_copy, accelerator, n_dim=mask_latents.ndim, dtype=train_dtype)
+                noise_ratio = get_noise_ratio(timesteps, noise_scheduler_copy, accelerator, n_dim=mask_latents.ndim, dtype=half_dtype)
                 # Add noise according to flow matching.
                 noisy_mask_latents = (1.0 - noise_ratio) * mask_latents + noise_ratio * noise
 
 
                 # ==== Forward Pass ====
                 transformer_input = torch.cat([image_latents, noisy_mask_latents], dim=1)
-                transformer_input = transformer_input.to(torch.bfloat16)
-                timesteps = timesteps.to(torch.bfloat16)
-                prompt_embeds = prompt_embeds.to(torch.bfloat16)
-                pooled_prompt_embeds = pooled_prompt_embeds.to(torch.bfloat16)
 
                 model_pred = transformer(
                         hidden_states=transformer_input,
