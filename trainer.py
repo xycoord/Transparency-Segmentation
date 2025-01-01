@@ -42,6 +42,10 @@ def main():
         mixed_precision=args.data_type,
     )
 
+    # ==== Mixed Precision ====
+    half_dtype = args.torch_dtype
+    full_dtype = torch.float32
+    device = accelerator.device
 
     # ==== Logging ====
     # Make one log on every process with the configuration for debugging.
@@ -62,14 +66,6 @@ def main():
     # Set up WandB logging 
 
 
-
-    # Mixed Precision
-    half_dtype = args.torch_dtype # VAE etc.
-    full_dtype = torch.float32 # Transformer etc.
-    device = accelerator.device
-    logger.info(f"Inference Data Type: {half_dtype}")
-    logger.info(f"Training Data Type: {full_dtype}")
-    logger.info(f"Device: {device}")
 
 
     # ======== LOAD MODELS ========
