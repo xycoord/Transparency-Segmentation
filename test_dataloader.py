@@ -1,9 +1,21 @@
 from dataset_configuration import normalize_mask, prepare_dataset
+from utils import load_prompt_embeds
 
+device = 'cuda'
 dataset_name = 'trans10k'
 dataset_path = '/home/xycoord/models/Trans10k/'
 train_batch_size = 4
 dataloader_num_workers = 4
+
+prompt_embeds, pooled_prompt_embeds = load_prompt_embeds('./precomputed_prompt_embeddings/')
+prompt_embeds = prompt_embeds.to(device)
+pooled_prompt_embeds = pooled_prompt_embeds.to(device)
+
+prompt_embeds = prompt_embeds.repeat(train_batch_size, 1, 1)
+print(prompt_embeds.shape)
+pooled_prompt_embeds = pooled_prompt_embeds.repeat(train_batch_size, 1 )
+print(pooled_prompt_embeds.shape)
+
 
 (train_loader, val_loader, test_loader), dataset_config_dict = prepare_dataset(
             data_name=dataset_name,
@@ -13,16 +25,17 @@ dataloader_num_workers = 4
             datathread=dataloader_num_workers,
             logger=None)
 
+
 for step, batch in enumerate(train_loader):
      # load image and mask 
-    image_data = batch[0]
-    mask = batch[1]
+     image_data = batch[0]
+     mask = batch[1]
 
-    # ==== Reshape data for stable diffusion standards ====
-    # mask is only a single channel so copy it across 3
-    mask_single = mask.unsqueeze(1)
-    mask_stacked = mask_single.repeat(1,3,1,1) # dim 0 is batch?
-    mask_stacked = mask_stacked.float() # the dataset has it as a float
-    mask_normalized= normalize_mask(mask_stacked)
+     # ==== Reshape data for stable diffusion standards ====
+     # mask is only a single channel so copy it across 3
+     mask_single = mask.unsqueeze(1)
+     mask_stacked = mask_single.repeat(1,3,1,1) # dim 0 is batch?
+     mask_stacked = mask_stacked.float() # the dataset has it as a float
+     mask_normalized= normalize_mask(mask_stacked)
 
-    break
+     break

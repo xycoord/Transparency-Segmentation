@@ -40,6 +40,7 @@ def main():
     # ==== Accelerator ====
     accelerator = Accelerator(
         mixed_precision=args.data_type,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
     )
 
     # ==== Mixed Precision ====
@@ -61,10 +62,8 @@ def main():
     else:
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
-    
 
     # Set up WandB logging 
-
 
 
 
@@ -207,7 +206,6 @@ def main():
             with accelerator.accumulate(transformer):
                 images, masks, names = batch 
                 batch_size = masks.shape[0]
-                
                 # ==== Reshape data for stable diffusion standards ====
                 masks_stacked = masks.unsqueeze(1).repeat(1,3,1,1).float() # dim 0 is batch?
 
@@ -239,18 +237,21 @@ def main():
                 # Add noise according to flow matching.
                 noisy_mask_latents = (1.0 - noise_ratio) * mask_latents + noise_ratio * noise
 
+                # ==== Prepare Prompt Embeds ====
+                prompt_embeds_batch = prompt_embeds.repeat(batch_size, 1, 1)
+                pooled_prompt_embeds_batch = pooled_prompt_embeds.repeat(batch_size, 1)
 
                 # ==== Forward Pass ====
                 transformer_input = torch.cat([image_latents, noisy_mask_latents], dim=1)
-
+                
                 model_pred = transformer(
                         hidden_states=transformer_input,
                         timestep=timesteps,
-                        encoder_hidden_states=prompt_embeds,
-                        pooled_projections=pooled_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds_batch,
+                        pooled_projections=pooled_prompt_embeds_batch,
                         return_dict=False,
                     )[0]
-                logger.info(f"Forward Pass Done")
+                logger.debug(f"Forward Pass Done")
 
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=noise_ratio)
                 target = noise - mask_latents
@@ -260,26 +261,27 @@ def main():
                     1,
                 )
                 loss = loss.mean()
-                logger.info(f"Loss Computed")
+                logger.debug(f"Loss Computed")
 
                 accelerator.backward(loss)
-                logger.info(f"Backward Pass Done")
+                logger.debug(f"Backward Pass Done")
 
                 if accelerator.sync_gradients:
                     params_to_clip = transformer.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
-                logger.info(f"Gradient Clipped")
+                logger.debug(f"Gradient Clipped")
 
                 optimizer.step()
-                logger.info(f"Optimizer Step Done")
+                logger.debug(f"Optimizer Step Done")
                 lr_scheduler.step()
-                logger.info(f"LR Scheduler Step Done")
+                logger.debug(f"LR Scheduler Step Done")
                 optimizer.zero_grad()
-                logger.info(f"Optimizer Zero Grad Done")
+                logger.debug(f"Optimizer Zero Grad Done")
 
-                if accelerator.sync_gradients:
-                    progress_bar.update(1)
-                    global_step += 1
+            if accelerator.sync_gradients:
+                logger.debug(f"Syncing Gradients")
+                progress_bar.update(1)
+                global_step += 1
 
                 logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
                 progress_bar.set_postfix(**logs)

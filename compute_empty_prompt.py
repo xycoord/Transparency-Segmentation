@@ -4,10 +4,11 @@ from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from pathlib import Path
 
 
-base_model_path = "stabilityai/stable-diffusion-3.5-large"
+base_model_path = "stabilityai/stable-diffusion-3.5-medium"
 device = "cuda"
 dtype = torch.bfloat16
-prompt = ""
+prompt = [""]
+negative_prompt = [""]
 save_folder_path = Path("./precomputed_prompt_embeddings")
 prompt_embeds_path = save_folder_path / "empty_prompt_embeds.pt"
 pooled_prompt_embeds_path = save_folder_path / "empty_pooled_prompt_embeds.pt"
@@ -63,19 +64,19 @@ with torch.no_grad():
         prompt=prompt,
         prompt_2=None,
         prompt_3=None,
-        negative_prompt="",
+        negative_prompt=negative_prompt,
         max_sequence_length=77,
     )
 
 print("negative_prompt_embeds.shape:", negative_prompt_embeds.shape)
 print("prompt_embeds.shape:", negative_prompt_embeds.shape)
 
-prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+# prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+# pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
 print("prompt_embeds.shape:", prompt_embeds.shape)
 print("pooled_prompt_embeds.shape:", pooled_prompt_embeds.shape)
 
-# print("Saving prompt embeddings.")
-# save_folder_path.mkdir(exist_ok=True, parents=True)
-# torch.save(prompt_embeds, prompt_embeds_path)
-# torch.save(pooled_prompt_embeds, pooled_prompt_embeds_path)
+print("Saving prompt embeddings.")
+save_folder_path.mkdir(exist_ok=True, parents=True)
+torch.save(prompt_embeds, prompt_embeds_path)
+torch.save(pooled_prompt_embeds, pooled_prompt_embeds_path)

@@ -24,7 +24,7 @@ dataset:
     type: str
     help: Name of dataset
   train_batch_size:
-    default: 2
+    default: 4
     type: int
     help: Batch size for training
   dataloader_num_workers:
@@ -34,13 +34,9 @@ dataset:
 
 training:
   resume_from_checkpoint:
-    default: latest
+    default: null
     type: str
     help: Path to checkpoint to resume from
-  batch_size: 
-    default: 1 
-    type: int
-    help: Batch size for training
   epochs:
     default: 1
     type: int
@@ -50,15 +46,16 @@ training:
     type: int
     help: Maximum number of training steps
   lr:
-    default: 0.0001
+    # default: 0.0001
+    default: 3e-5
     type: float
     help: Learning rate for training
   gradient_accumulation_steps:
-    default: 1
+    default: 8
     type: int
     help: Gradient accumulation steps
   save_checkpoint_steps:
-    default: 200
+    default: 200 
     type: int
     help: Save checkpoint every n steps
 
@@ -86,7 +83,7 @@ learning_rate_scheduler:
     type: str
     help: Learning rate scheduler
   lr_warmup_steps:
-    default: 1000
+    default: 157
     type: int
     help: Number of warmup steps for learning rate scheduler
 
@@ -116,6 +113,6 @@ misc:
       
 project_config:
   output_dir:
-    default: 'output'
+    default: '/home/xycoord/output'
     type: str
     help: Output directory
