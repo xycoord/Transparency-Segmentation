@@ -41,6 +41,7 @@ def main():
     accelerator = Accelerator(
         mixed_precision=args.data_type,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
+        log_with="wandb",
     )
 
     # ==== Mixed Precision ====
@@ -63,8 +64,16 @@ def main():
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
-    # Set up WandB logging 
-
+    # ==== Tracking ==== 
+    accelerator.init_trackers(
+        "sd3-finetune-transparency",
+        config={
+        "learning_rate": args.lr,
+        "dataset": "trans10k",
+        "epochs": args.epochs,
+        "batch_size": args.train_batch_size,
+        }
+    )
 
 
     # ======== LOAD MODELS ========
@@ -282,6 +291,7 @@ def main():
                 logger.debug(f"Syncing Gradients")
                 progress_bar.update(1)
                 global_step += 1
+
 
                 logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
                 progress_bar.set_postfix(**logs)
