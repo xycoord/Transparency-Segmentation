@@ -131,7 +131,6 @@ def main():
             datathread=args.dataloader_num_workers,
             logger=logger)
     
-    num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
 
 
     # ======== LEARNING RATE AND OPTIMIZER ========
@@ -174,6 +173,8 @@ def main():
     )
     logger.info("Accelerator Prepared")
 
+    # Preparing the loaders will change their length, so we need to update the number of steps.
+    num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
 
     # ======== Resume from Checkpoint ========
     if args.resume_from_checkpoint:
@@ -202,7 +203,7 @@ def main():
     # ======== TRAINING LOOP ========
 
     progress_bar = tqdm(
-        range(0, args.max_train_steps),
+        range(0, num_update_steps_per_epoch),
         initial=initial_global_step,
         desc="Steps",
         # Only show the progress bar once on each machine.
@@ -215,6 +216,7 @@ def main():
             with accelerator.accumulate(transformer):
                 images, masks, names = batch 
                 batch_size = masks.shape[0]
+
                 # ==== Reshape data for stable diffusion standards ====
                 masks_stacked = masks.unsqueeze(1).repeat(1,3,1,1).float() # dim 0 is batch?
 

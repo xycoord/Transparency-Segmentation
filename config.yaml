@@ -55,7 +55,7 @@ training:
     type: int
     help: Gradient accumulation steps
   save_checkpoint_steps:
-    default: 200 
+    default: 79 
     type: int
     help: Save checkpoint every n steps
 
