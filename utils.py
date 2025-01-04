@@ -25,7 +25,7 @@ def compute_max_train_steps(batches_per_epoch, epochs, gradient_accumulation_ste
 
 from diffusers.training_utils import compute_density_for_timestep_sampling
 
-def sample_timesteps(noise_scheduler, batch_size, weighting_scheme, logit_mean, logit_std, mode_scale):
+def sample_timesteps(noise_scheduler, batch_size, weighting_scheme, logit_mean, logit_std, mode_scale=None):
     # Sample a random timestep for each image
     # for weighting schemes where we sample timesteps non-uniformly
     u = compute_density_for_timestep_sampling(

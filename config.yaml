@@ -34,7 +34,7 @@ dataset:
 
 training:
   resume_from_checkpoint:
-    default: null
+    default: latest
     type: str
     help: Path to checkpoint to resume from
   epochs:
@@ -58,6 +58,10 @@ training:
     default: 79 
     type: int
     help: Save checkpoint every n steps
+  val_steps:
+    default: 79 
+    type: int
+    help: Validate every n steps
 
 optimizer:
   adam_beta1:

@@ -21,6 +21,7 @@ from diffusers.training_utils import compute_loss_weighting_for_sd3
 from diffusers.utils.torch_utils import is_compiled_module
 
 from dataset_configuration import prepare_dataset
+from log_val import log_validation
 from utils import compute_max_train_steps, load_prompt_embeds, get_noise_ratio, sample_timesteps
 
 logger = get_logger(__name__)
@@ -65,15 +66,15 @@ def main():
         diffusers.utils.logging.set_verbosity_error()
 
     # ==== Tracking ==== 
-    accelerator.init_trackers(
-        "sd3-finetune-transparency",
-        config={
-        "learning_rate": args.lr,
-        "dataset": "trans10k",
-        "epochs": args.epochs,
-        "batch_size": args.train_batch_size,
-        }
-    )
+    # accelerator.init_trackers(
+    #     "sd3-finetune-transparency",
+    #     config={
+    #     "learning_rate": args.lr,
+    #     "dataset": "trans10k",
+    #     "epochs": args.epochs,
+    #     "batch_size": args.train_batch_size,
+    #     }
+    # )
 
 
     # ======== LOAD MODELS ========
@@ -198,9 +199,24 @@ def main():
     steps_in_current_epoch = global_step % num_update_steps_per_epoch
 
     train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
-                
 
-    # ======== TRAINING LOOP ========
+    #init val
+    
+    transformer.eval()
+    log_validation( 
+                        args=args,
+                        accelerator=accelerator,
+                        vae=vae,
+                        transformer=accelerator.unwrap_model(transformer),
+                        noise_scheduler=accelerator.unwrap_model(noise_scheduler),
+                        data_loader=val_loader,
+                        global_step=global_step,
+                        denoise_steps=20,
+                        num_vals=1,
+                        ensemble_size=5,
+                        logger=logger,
+                        )
+    logger.info("Validation Done")
 
     progress_bar = tqdm(
         range(0, num_update_steps_per_epoch),
@@ -241,7 +257,6 @@ def main():
                     weighting_scheme=args.weighting_scheme,
                     logit_mean=args.logit_mean,
                     logit_std=args.logit_std,
-                    mode_scale=args.mode_scale
                 ).to(device)
 
                 noise_ratio = get_noise_ratio(timesteps, noise_scheduler_copy, accelerator, n_dim=mask_latents.ndim, dtype=half_dtype)
@@ -305,8 +320,23 @@ def main():
                     accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
 
                 # ==== Validation ====
-
-
+                if global_step % args.val_steps == 0 and global_step > 0:
+                    transformer.eval()
+                    log_validation( 
+                        args=args,
+                        accelerator=accelerator,
+                        vae=vae,
+                        transformer=accelerator.unwrap_model(transformer),
+                        noise_scheduler=accelerator.unwrap_model(noise_scheduler),
+                        data_loader=val_loader,
+                        global_step=global_step,
+                        denoise_steps=10,
+                        num_vals=10,
+                        ensemble_size=5,
+                        logger=logger,
+                        )
+                    logger.info("Validation Done")
+                    
     accelerator.end_training()
                              
 
