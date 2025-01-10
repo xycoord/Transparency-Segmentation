@@ -12,9 +12,6 @@ def log_validation(args, accelerator, vae, transformer, noise_scheduler, data_lo
     device = accelerator.device
     width = 1024
     height = 1024
-    guidance_scale = 5.0 # Scale for classifier-free guidance
-    generator = torch.Generator(device=device).manual_seed(1)  # Seed generator to create the initial latent noise
-    half_dtype = torch.bfloat16
 
     vae_image_processor = VaeImageProcessor(do_normalize=True)
 
@@ -36,18 +33,23 @@ def log_validation(args, accelerator, vae, transformer, noise_scheduler, data_lo
         batch_size = images.shape[0]
 
         masks_stacked = masks.unsqueeze(1).repeat(1,3,1,1).float() # dim 0 is batch?
+         
+        prediction = pipeline(images, masks_stacked, denoise_steps=denoise_steps, ensemble_size=ensemble_size, processing_res=width, match_input_res=True, batch_size=batch_size, color_map="gray", show_progress_bar=False)
+
         masks_gt = vae_image_processor.pt_to_numpy(masks_stacked)
         masks_gt = vae_image_processor.numpy_to_pil(masks_gt)
 
         for i, mask_gt in enumerate(masks_gt):
-            mask_gt.save(image_output_dir / f"val_{val_index}_{i}_gt.png")
- 
-        prediction = pipeline(images, denoise_steps=denoise_steps, ensemble_size=ensemble_size, processing_res=width, match_input_res=True, batch_size=batch_size, color_map="gray", show_progress_bar=False)
+            mask_gt.save(image_output_dir / f"val_{val_index}_{i}_gt_{accelerator.local_process_index}.png")
 
         for i, mask_pred in enumerate(prediction.mask_colored):
-            mask_pred.save(image_output_dir / f"val_{val_index}_{i}.png")
-
-       
-        del prediction
-        torch.cuda.empty_cache() 
+            mask_pred.save(image_output_dir / f"val_{val_index}_{i}_{accelerator.local_process_index}.png")
         
+        for i, n in enumerate(prediction.noise_output):
+            n.save(image_output_dir / f"val_{val_index}_{i}_noise_{accelerator.local_process_index}.png")
+        
+        for i, mask_v in enumerate(prediction.mask_vae):
+            mask_v.save(image_output_dir / f"val_{val_index}_{i}_vae_{accelerator.local_process_index}.png")
+
+    del pipeline
+    del vae_image_processor

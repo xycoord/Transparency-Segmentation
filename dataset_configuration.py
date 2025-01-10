@@ -50,7 +50,7 @@ def prepare_dataset(data_name,
                             shuffle = True, num_workers = datathread, \
                             pin_memory = True)
 
-    val_loader = DataLoader(val_dataset, batch_size = batch_size, \
+    val_loader = DataLoader(val_dataset, batch_size = test_batch, \
                             shuffle = False, num_workers = datathread, \
                             pin_memory = True)
 

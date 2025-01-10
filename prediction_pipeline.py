@@ -14,6 +14,8 @@ from diffusers.image_processor import VaeImageProcessor
 class MaskPipelineOutput(BaseOutput):
     mask_np: torch.Tensor
     mask_colored: Image.Image
+    mask_vae: Image.Image
+    noise_output: Image.Image
     uncertainty: Union[None, np.ndarray]
 
 
@@ -44,6 +46,7 @@ class PredictionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(self,
                  input_images: torch.Tensor = None,
+                 input_masks: torch.Tensor = None,
                  denoise_steps: int =10,
                  ensemble_size: int =10,
                  processing_res: int = 1024,
@@ -62,30 +65,43 @@ class PredictionPipeline(DiffusionPipeline):
 
         # ==== Preprare for Encoder ====
         images_normalized = self.vae_image_processor.normalize(input_images).to(self.device).to(torch.bfloat16) # Shouldn't be hard coded type
-        print(f"images_normalized: {images_normalized.shape}")
+        mask_normalized = self.vae_image_processor.normalize(input_masks).to(self.device).to(torch.bfloat16) # Shouldn't be hard coded type
         
         # ==== Encode ====
         image_latents = self.vae.encode(images_normalized).latent_dist.sample()
-        print(f"image_latents: {image_latents.shape}")
+        mask_latents = self.vae.encode(mask_normalized).latent_dist.sample()
 
         # ==== Prepare for Transformer ====
         # Scale so latents behave well with diffusion
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+        mask_latents = (mask_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
-        output = self.generate_mask(batch_size, image_latents, image_latents, prompt_embeds_batch, pooled_prompt_embeds_batch)
-        print(f"output: {output.shape}")
+        output_latents, noise = self.generate_mask(batch_size, image_latents, prompt_embeds_batch, pooled_prompt_embeds_batch)
+
+        # decode the output
+        output_latents = (output_latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+        mask_latents = (mask_latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+        noise = (noise / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+        with torch.no_grad():
+            output = self.vae.decode(output_latents).sample
+            mask = self.vae.decode(mask_latents).sample
+            noise = self.vae.decode(noise).sample
+
 
         mask_pred = self.vae_image_processor.postprocess(output, output_type='pt')
         output_PIL = self.vae_image_processor.postprocess(output, output_type='pil')
+        mask_pt = self.vae_image_processor.postprocess(mask, output_type='pt')
+        mask_PIL = self.vae_image_processor.postprocess(mask, output_type='pil')
+        noise_PIL = self.vae_image_processor.postprocess(noise, output_type='pil')
 
-        return MaskPipelineOutput(mask_pt=mask_pred, mask_colored=output_PIL, uncertainty=None)
+
+        return MaskPipelineOutput(mask_pt=mask_pred, mask_colored=output_PIL, mask_vae=mask_PIL, noise_output=noise_PIL, uncertainty=None)
     
 
 
-    def generate_mask(self, batch_size, image_latents, latents, prompt_embeds_batch, pooled_prompt_embeds_batch):
+    def generate_mask(self, batch_size, image_latents, prompt_embeds_batch, pooled_prompt_embeds_batch):
         # ==== Noise ====
         noise = torch.randn_like(image_latents)
-        print(f"noise: {noise.shape}")
         latents = noise
         
         # ==== Denoise ====
@@ -109,12 +125,4 @@ class PredictionPipeline(DiffusionPipeline):
             # latents = scheduler.step(noise_pred, t, latents).prev_sample
             latents = self.noise_scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-        # Decode the final latents
-        latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
-        print(f"latents: {latents.shape}")
-        with torch.no_grad():
-            output = self.vae.decode(latents).sample
-
-        torch.cuda.empty_cache()
-
-        return output
+        return latents, noise

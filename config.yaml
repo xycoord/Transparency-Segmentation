@@ -27,6 +27,10 @@ dataset:
     default: 4
     type: int
     help: Batch size for training
+  test_batch_size:
+    default: 1
+    type: int
+    help: Batch size for testing
   dataloader_num_workers:
     default: 4
     type: int
@@ -34,24 +38,20 @@ dataset:
 
 training:
   resume_from_checkpoint:
-    default: latest
+    default: null
     type: str
     help: Path to checkpoint to resume from
   epochs:
-    default: 1
+    default: 30 
     type: int
     help: Number of epochs to train
   max_train_steps:
     default: null
     type: int
     help: Maximum number of training steps
-  lr:
-    # default: 0.0001
-    default: 3e-5
-    type: float
-    help: Learning rate for training
+
   gradient_accumulation_steps:
-    default: 8
+    default: 4
     type: int
     help: Gradient accumulation steps
   save_checkpoint_steps:
@@ -59,7 +59,7 @@ training:
     type: int
     help: Save checkpoint every n steps
   val_steps:
-    default: 79 
+    default: 10 
     type: int
     help: Validate every n steps
 
@@ -82,12 +82,21 @@ optimizer:
     help: Epsilon for Adam optimizer
 
 learning_rate_scheduler:
+  lr:
+    # default: 0.0001
+    default: 1e-5 #3e-5
+    type: float
+    help: Learning rate for training
   lr_scheduler:
     default: 'cosine'
     type: str
     help: Learning rate scheduler
+  lr_cycles:
+    default: 4
+    type: float
+    help: Number of cycles for learning rate scheduler
   lr_warmup_steps:
-    default: 157
+    default: 159
     type: int
     help: Number of warmup steps for learning rate scheduler
 
@@ -109,9 +118,9 @@ noise:
     type: float
     help: Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.
 
-misc:
+gradient_clipping:
   max_grad_norm:
-    default: 1.0
+    default: 0.01 #1.0
     type: float
     help: Maximum gradient norm
       

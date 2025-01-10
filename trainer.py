@@ -1,4 +1,5 @@
 import copy
+import gc
 import math
 from checkpoint_utils import get_checkpoint_path, get_global_step_from_checkpoint
 import torch
@@ -17,12 +18,14 @@ import diffusers
 from diffusers import AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscreteScheduler
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_loss_weighting_for_sd3
+from diffusers.training_utils import compute_loss_weighting_for_sd3, free_memory
 from diffusers.utils.torch_utils import is_compiled_module
+
+from deepspeed.utils import safe_get_full_grad
 
 from dataset_configuration import prepare_dataset
 from log_val import log_validation
-from utils import compute_max_train_steps, load_prompt_embeds, get_noise_ratio, sample_timesteps
+from utils import compute_max_train_steps, load_prompt_embeds, get_noise_ratio, print_gpu_memory, sample_timesteps
 
 logger = get_logger(__name__)
 
@@ -66,15 +69,16 @@ def main():
         diffusers.utils.logging.set_verbosity_error()
 
     # ==== Tracking ==== 
-    # accelerator.init_trackers(
-    #     "sd3-finetune-transparency",
-    #     config={
-    #     "learning_rate": args.lr,
-    #     "dataset": "trans10k",
-    #     "epochs": args.epochs,
-    #     "batch_size": args.train_batch_size,
-    #     }
-    # )
+    accelerator.init_trackers(
+        "sd3-finetune-transparency",
+        config={
+        "learning_rate": args.lr,
+        "dataset": "trans10k",
+        "epochs": args.epochs,
+        "batch_size": args.train_batch_size,
+        "max_grad_norm": args.max_grad_norm,
+        }
+    )
 
 
     # ======== LOAD MODELS ========
@@ -105,7 +109,9 @@ def main():
         low_cpu_mem_usage=False,
         ignore_mismatched_sizes=True,
         in_channels=32, # 16 for masks + 16 for images 
-        sample_size=128
+        out_channels=16,
+        sample_size=128,
+        qk_norm="rms_norm"
     )
     transformer.requires_grad_(True)
     transformer.enable_gradient_checkpointing()
@@ -128,7 +134,7 @@ def main():
             data_name=args.dataset_name,
             dataset_path=args.dataset_path,
             batch_size=args.train_batch_size,
-            test_batch=1, # args.test_batch_size, what is this?
+            test_batch=args.test_batch_size,
             datathread=args.dataloader_num_workers,
             logger=logger)
     
@@ -152,7 +158,7 @@ def main():
     logger.info("Optimizer Initialized with AdamW")
 
     # ==== Learning Rate Scheduler ====
-    args.max_train_steps = compute_max_train_steps(
+    args.max_train_steps, overrode_max_train_steps = compute_max_train_steps(
         len(train_loader),
         args.epochs,
         args.gradient_accumulation_steps,
@@ -163,6 +169,7 @@ def main():
         args.lr_scheduler,
         optimizer,
         num_warmup_steps = args.lr_warmup_steps * accelerator.num_processes,
+        num_cycles=args.lr_cycles,
         num_training_steps = args.max_train_steps * accelerator.num_processes,
     )
     logger.info("Learning Rate Scheduler Initialized")
@@ -176,6 +183,9 @@ def main():
 
     # Preparing the loaders will change their length, so we need to update the number of steps.
     num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
+    if overrode_max_train_steps:
+        args.max_train_steps = num_update_steps_per_epoch * args.epochs
+    args.val_steps = math.ceil(num_update_steps_per_epoch / 2) 
 
     # ======== Resume from Checkpoint ========
     if args.resume_from_checkpoint:
@@ -194,6 +204,11 @@ def main():
         logger.info("Starting a new training run.")
         initial_global_step = 0
 
+    logger.info(f"Number of Update Steps per Epoch: {num_update_steps_per_epoch}")
+    logger.info(f"Val Steps: {args.val_steps}")
+    logger.info(f"Epochs: {args.epochs}")
+    logger.info(f"Max Train Steps: {args.max_train_steps}")
+
     global_step = initial_global_step
     first_epoch = global_step // num_update_steps_per_epoch
     steps_in_current_epoch = global_step % num_update_steps_per_epoch
@@ -202,32 +217,39 @@ def main():
 
     #init val
     
-    transformer.eval()
-    log_validation( 
-                        args=args,
-                        accelerator=accelerator,
-                        vae=vae,
-                        transformer=accelerator.unwrap_model(transformer),
-                        noise_scheduler=accelerator.unwrap_model(noise_scheduler),
-                        data_loader=val_loader,
-                        global_step=global_step,
-                        denoise_steps=20,
-                        num_vals=1,
-                        ensemble_size=5,
-                        logger=logger,
-                        )
-    logger.info("Validation Done")
+    # transformer.eval()
+    # log_validation( 
+    #                     args=args,
+    #                     accelerator=accelerator,
+    #                     vae=vae,
+    #                     transformer=accelerator.unwrap_model(transformer),
+    #                     noise_scheduler=accelerator.unwrap_model(noise_scheduler),
+    #                     data_loader=val_loader,
+    #                     global_step=global_step,
+    #                     denoise_steps=50,
+    #                     num_vals=5,
+    #                     ensemble_size=5,
+    #                     logger=logger,
+    #                     )
+    # logger.info("Validation Done")
+    # return
 
-    progress_bar = tqdm(
-        range(0, num_update_steps_per_epoch),
-        initial=initial_global_step,
-        desc="Steps",
-        # Only show the progress bar once on each machine.
-        disable=not accelerator.is_local_main_process,
-    )
-
+    
     for epoch in range(first_epoch, args.epochs):
         transformer.train()
+        accum_loss = 0.0
+        accum_steps = 0
+
+        logger.info(f"Epoch {epoch}")
+
+        progress_bar = tqdm(
+            range(0, num_update_steps_per_epoch),
+            initial=initial_global_step,
+            desc="Steps",
+            # Only show the progress bar once on each machine.
+            disable=not accelerator.is_local_main_process,
+        )
+
         for batch in train_loader:
             with accelerator.accumulate(transformer):
                 images, masks, names = batch 
@@ -291,36 +313,42 @@ def main():
 
                 accelerator.backward(loss)
                 logger.debug(f"Backward Pass Done")
-
-                if accelerator.sync_gradients:
-                    params_to_clip = transformer.parameters()
-                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
-                logger.debug(f"Gradient Clipped")
-
+                
                 optimizer.step()
+                 
                 logger.debug(f"Optimizer Step Done")
                 lr_scheduler.step()
                 logger.debug(f"LR Scheduler Step Done")
                 optimizer.zero_grad()
                 logger.debug(f"Optimizer Zero Grad Done")
 
+                accum_loss += loss.detach().item()
+                accum_steps += 1
+
             if accelerator.sync_gradients:
                 logger.debug(f"Syncing Gradients")
                 progress_bar.update(1)
                 global_step += 1
 
+                grad_norm = transformer.get_global_grad_norm().item()
 
-                logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                logs = {"loss": accum_loss/accum_steps, "lr": lr_scheduler.get_last_lr()[0], "grad_norm": grad_norm}
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
+                
+                accum_loss = 0.0
+                accum_steps = 0
 
                 # ==== Save checkpoint ====
-                if global_step % args.save_checkpoint_steps == 0 and global_step > 0:
-                    accelerator.wait_for_everyone()
-                    accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
-
+                # if global_step % args.save_checkpoint_steps == 0 and global_step > 0:
+                #     accelerator.wait_for_everyone()
+                #     accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
+                
                 # ==== Validation ====
                 if global_step % args.val_steps == 0 and global_step > 0:
+                    
+                    free_memory()
+
                     transformer.eval()
                     log_validation( 
                         args=args,
@@ -330,12 +358,20 @@ def main():
                         noise_scheduler=accelerator.unwrap_model(noise_scheduler),
                         data_loader=val_loader,
                         global_step=global_step,
-                        denoise_steps=10,
-                        num_vals=10,
+                        denoise_steps=30,
+                        num_vals=4,
                         ensemble_size=5,
                         logger=logger,
                         )
+                    transformer.train()
                     logger.info("Validation Done")
+
+                    free_memory()
+
+        accelerator.wait_for_everyone()
+        accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
+                
+
                     
     accelerator.end_training()
                              

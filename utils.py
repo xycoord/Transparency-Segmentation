@@ -14,13 +14,15 @@ def load_prompt_embeds(path):
 
 def compute_max_train_steps(batches_per_epoch, epochs, gradient_accumulation_steps, logger=None, max_train_steps=None):
     num_update_steps_per_epoch = math.ceil(batches_per_epoch / gradient_accumulation_steps)
+    overrode = False
     if max_train_steps is None:
         max_train_steps = epochs * num_update_steps_per_epoch
+        overrode = True
         if logger is not None:
             logger.info(f"Max Train Steps Computed: {max_train_steps}")
     elif logger is not None:
         logger.info(f"Max Train Steps Provided: {max_train_steps}")
-    return max_train_steps
+    return max_train_steps, overrode
 
 
 from diffusers.training_utils import compute_density_for_timestep_sampling
@@ -37,6 +39,18 @@ def sample_timesteps(noise_scheduler, batch_size, weighting_scheme, logit_mean, 
     )
     indices = (u * noise_scheduler.config.num_train_timesteps).long()
     timesteps = noise_scheduler.timesteps[indices]
+
+    # Timestep Shifting as per paper
+    alpha = 3.0  # As recommended in paper for 1024x1024
+
+    # After getting initial timesteps
+    t_n = timesteps.float() / noise_scheduler.config.num_train_timesteps
+    t_m = (alpha * t_n) / (1 + (alpha - 1) * t_n)
+    timesteps = (t_m * noise_scheduler.config.num_train_timesteps).to(torch.float32)
+
+    # Find closest timesteps in noise_scheduler.timesteps
+    timesteps = torch.tensor([noise_scheduler.timesteps[torch.abs(noise_scheduler.timesteps - t).argmin()] for t in timesteps])
+
     return timesteps
 
 def get_noise_ratio(timesteps, noise_scheduler, accelerator, n_dim=4, dtype=torch.float32):
@@ -50,4 +64,7 @@ def get_noise_ratio(timesteps, noise_scheduler, accelerator, n_dim=4, dtype=torc
         sigma = sigma.unsqueeze(-1)
     return sigma
 
-
+def print_gpu_memory():
+    if torch.cuda.is_available():
+        print(f"GPU memory allocated: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+        print(f"GPU memory cached: {torch.cuda.memory_reserved()/1e9:.2f} GB")
