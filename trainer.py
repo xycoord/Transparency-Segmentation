@@ -17,7 +17,7 @@ import transformers
 import diffusers
 from diffusers import AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscreteScheduler
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.optimization import get_scheduler
+from diffusers.optimization import get_scheduler, get_cosine_schedule_with_warmup
 from diffusers.training_utils import compute_loss_weighting_for_sd3, free_memory
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -25,23 +25,26 @@ from deepspeed.utils import safe_get_full_grad
 
 from dataset_configuration import prepare_dataset
 from log_val import log_validation
+from lr_schedule_test import plot_lr_schedule
 from utils import compute_max_train_steps, load_prompt_embeds, get_noise_ratio, print_gpu_memory, sample_timesteps
 
 logger = get_logger(__name__)
 
 def main():
 
-    args = parse_args()
+    args = parse_args() # config.yaml
 
     # ==== Setup Directories ====
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    logging_dir = output_dir / "logs"
-    logging_dir.mkdir(parents=True, exist_ok=True) # Logging directory doesn't seem to be used
     checkpoint_dir = output_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     # ==== Accelerator ====
+    # The accelerator (Hugging Face) takes care of:
+    # - Multi-GPU training
+    # - Logging
+    # - Tracking
     accelerator = Accelerator(
         mixed_precision=args.data_type,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -69,14 +72,19 @@ def main():
         diffusers.utils.logging.set_verbosity_error()
 
     # ==== Tracking ==== 
+    # Trackers (Weights and Biases) record metrics such as loss and learning rate during training.
+    # Weight and Biases lets us visualize these in a web interface.
     accelerator.init_trackers(
         "sd3-finetune-transparency",
         config={
-        "learning_rate": args.lr,
         "dataset": "trans10k",
         "epochs": args.epochs,
         "batch_size": args.train_batch_size,
+        "learning_rate": args.lr,
+        "num_warmup_steps": args.lr_warmup_steps,
+        "num_cycles": args.lr_cycles,
         "max_grad_norm": args.max_grad_norm,
+        "num_processes": accelerator.num_processes,
         }
     )
 
@@ -84,11 +92,16 @@ def main():
     # ======== LOAD MODELS ========
 
     # ==== Load Precomputed Prompt Embeddings ====
+    # For this task, we condition the transformer with empty prompts ("")
+    # Instead of loading the tokenizers and text encoders, we directly load the precomputed prompt embeddings.
+    # This save time and memory.
+    # See the script `compute_empty_prompt.py` for how these are computed.
     prompt_embeds, pooled_prompt_embeds = load_prompt_embeds(args.prompt_embeds_path)
     prompt_embeds = prompt_embeds.to(device)
     pooled_prompt_embeds = pooled_prompt_embeds.to(device)
 
     # ==== Load VAE ====
+    # The VAE is a pretrained model which we will use to encode images and masks into the latent space.
     vae = AutoencoderKL.from_pretrained(
         args.base_model_path, 
         subfolder="vae", 
@@ -107,19 +120,22 @@ def main():
         # use_safetensors=True,
         torch_dtype=full_dtype, # Load with full precision for safety
         low_cpu_mem_usage=False,
-        ignore_mismatched_sizes=True,
         in_channels=32, # 16 for masks + 16 for images 
         out_channels=16,
+        # We've made a modification to the architecture so need to tell Diffusers that this is intended.
+        ignore_mismatched_sizes=True,
+        # Sample size and qk norm use these values anyway, but we set them explicitly to be clear
         sample_size=128,
         qk_norm="rms_norm"
     )
-    transformer.requires_grad_(True)
-    transformer.enable_gradient_checkpointing()
+    transformer.requires_grad_(True) # We are training the transformer
+    # Gradient checkpointing is essential for avoiding OOM errors.
+    transformer.enable_gradient_checkpointing() 
     logger.info("Transformer Loaded")
 
-    # EMA Transformer? (EMA Unet)
 
     # ==== Noise Scheduler ====
+    # The noise scheduler used with SD3(.5)
     noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
         args.base_model_path, subfolder="scheduler"
     )
@@ -128,26 +144,31 @@ def main():
 
         
     # ======== DATA LOADERS ======== 
-
+    # Dataset: Trans10k
+    # See dataloader_trans10k.py for how the dataset is loaded.
+    # This is a streamlined version of the original Trans10k dataloader
+    # Noteably, values for masks are either 0 or 1 and the "Things"/"Stuff" distinction is removed.
     with accelerator.main_process_first():
         (train_loader, val_loader, test_loader), dataset_config_dict = prepare_dataset(
             data_name=args.dataset_name,
             dataset_path=args.dataset_path,
-            batch_size=args.train_batch_size,
+            batch_size=args.train_batch_size, # Batch given Per GPU
             test_batch=args.test_batch_size,
             datathread=args.dataloader_num_workers,
             logger=logger)
     
 
-
     # ======== LEARNING RATE AND OPTIMIZER ========
 
     # ==== Scale Learning Rate ====
+    # When the effective batch size is changed the learning rate must be scaled accordingly.
+    # The lr set in the args is the learning rate for a batch of 1.
     prescaled_lr = args.lr
     args.lr = prescaled_lr * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
     logger.info(f"Learning Rate Scaled: {prescaled_lr} -> {args.lr}")
 
     # ==== Optimizer ====
+    # Following the SD3 paper, epsilon is set to 1e-15 in the args.
     optimizer = torch.optim.AdamW(
         transformer.parameters(),
         lr=args.lr,
@@ -158,6 +179,7 @@ def main():
     logger.info("Optimizer Initialized with AdamW")
 
     # ==== Learning Rate Scheduler ====
+
     args.max_train_steps, overrode_max_train_steps = compute_max_train_steps(
         len(train_loader),
         args.epochs,
@@ -165,29 +187,35 @@ def main():
         logger=logger,
         max_train_steps=args.max_train_steps,
     )
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler,
+    # There is a bug in Diffusers with get_schedule so we directly use the cosine schedule.
+    lr_scheduler = get_cosine_schedule_with_warmup(
         optimizer,
         num_warmup_steps = args.lr_warmup_steps * accelerator.num_processes,
-        num_cycles=args.lr_cycles,
+        num_cycles=args.lr_cycles * accelerator.num_processes,
         num_training_steps = args.max_train_steps * accelerator.num_processes,
     )
     logger.info("Learning Rate Scheduler Initialized")
 
 
     # ======== Prepare all with Accelerator ========
+    # The accelerator wraps the components to handle multi-GPU training.
     transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler = accelerator.prepare(
         transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler
     )
     logger.info("Accelerator Prepared")
+    
 
     # Preparing the loaders will change their length, so we need to update the number of steps.
     num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = num_update_steps_per_epoch * args.epochs
+    # Automatically set val steps
     args.val_steps = math.ceil(num_update_steps_per_epoch / 2) 
 
     # ======== Resume from Checkpoint ========
+    # Checkpoints are stored in the output directory under the "checkpoints" folder.
+    # To load the latest checkpoint, set the resume_from_checkpoint argument to "latest".
+    # To load a specific checkpoint, set the resume_from_checkpoint argument to the name of the checkpoint.
     if args.resume_from_checkpoint:
         checkpoint_name = args.resume_from_checkpoint
         checkpoint_path = get_checkpoint_path(checkpoint_name, checkpoint_dir)
@@ -204,6 +232,7 @@ def main():
         logger.info("Starting a new training run.")
         initial_global_step = 0
 
+
     logger.info(f"Number of Update Steps per Epoch: {num_update_steps_per_epoch}")
     logger.info(f"Val Steps: {args.val_steps}")
     logger.info(f"Epochs: {args.epochs}")
@@ -212,28 +241,12 @@ def main():
     global_step = initial_global_step
     first_epoch = global_step // num_update_steps_per_epoch
     steps_in_current_epoch = global_step % num_update_steps_per_epoch
+    logger.info(f"Steps in Current Epoch: {steps_in_current_epoch}")
 
-    train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
+    # train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
 
-    #init val
-    
-    # transformer.eval()
-    # log_validation( 
-    #                     args=args,
-    #                     accelerator=accelerator,
-    #                     vae=vae,
-    #                     transformer=accelerator.unwrap_model(transformer),
-    #                     noise_scheduler=accelerator.unwrap_model(noise_scheduler),
-    #                     data_loader=val_loader,
-    #                     global_step=global_step,
-    #                     denoise_steps=50,
-    #                     num_vals=5,
-    #                     ensemble_size=5,
-    #                     logger=logger,
-    #                     )
-    # logger.info("Validation Done")
-    # return
 
+    # ======== TRAINING LOOP ========
     
     for epoch in range(first_epoch, args.epochs):
         transformer.train()
@@ -244,7 +257,7 @@ def main():
 
         progress_bar = tqdm(
             range(0, num_update_steps_per_epoch),
-            initial=initial_global_step,
+            initial=0,
             desc="Steps",
             # Only show the progress bar once on each machine.
             disable=not accelerator.is_local_main_process,

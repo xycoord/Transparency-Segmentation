@@ -32,7 +32,7 @@ def log_validation(args, accelerator, vae, transformer, noise_scheduler, data_lo
         images, masks, names = batch 
         batch_size = images.shape[0]
 
-        masks_stacked = masks.unsqueeze(1).repeat(1,3,1,1).float() # dim 0 is batch?
+        masks_stacked = masks.unsqueeze(1).repeat(1,3,1,1).float()
          
         prediction = pipeline(images, masks_stacked, denoise_steps=denoise_steps, ensemble_size=ensemble_size, processing_res=width, match_input_res=True, batch_size=batch_size, color_map="gray", show_progress_bar=False)
 

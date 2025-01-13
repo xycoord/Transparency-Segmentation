@@ -38,7 +38,7 @@ dataset:
 
 training:
   resume_from_checkpoint:
-    default: null
+    default: latest
     type: str
     help: Path to checkpoint to resume from
   epochs:
@@ -96,7 +96,7 @@ learning_rate_scheduler:
     type: float
     help: Number of cycles for learning rate scheduler
   lr_warmup_steps:
-    default: 159
+    default: 79
     type: int
     help: Number of warmup steps for learning rate scheduler
 
