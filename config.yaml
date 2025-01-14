@@ -38,7 +38,7 @@ dataset:
 
 training:
   resume_from_checkpoint:
-    default: latest
+    default: latest 
     type: str
     help: Path to checkpoint to resume from
   epochs:
