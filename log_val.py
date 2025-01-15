@@ -33,7 +33,7 @@ def log_validation(args, accelerator, vae, transformer, noise_scheduler, data_lo
                         masks_stacked, 
                         denoise_steps=denoise_steps, 
                         ensemble_size=ensemble_size, 
-                        batch_size=1, #TODO: use args here
+                        batch_size=1, #TODO: use args here NOTE I've found that although greater batch sizes are are fine for memory, 1 seems to be fastest
                      )
 
         masks_gt = vae_image_processor.pt_to_numpy(masks_stacked)

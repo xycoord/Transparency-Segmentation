@@ -1,7 +1,7 @@
 import copy
 import gc
 import math
-from checkpoint_utils import get_checkpoint_path, get_global_step_from_checkpoint
+from checkpoint_utils import get_checkpoint_path, get_global_step_from_checkpoint, resume_from_checkpoint
 import torch
 from tqdm import tqdm
 from args_parser import parse_args
@@ -204,7 +204,6 @@ def main():
     )
     logger.info("Accelerator Prepared")
     
-
     # Preparing the loaders will change their length, so we need to update the number of steps.
     num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -212,37 +211,42 @@ def main():
     # Automatically set val steps
     args.val_steps = math.ceil(num_update_steps_per_epoch / 2) 
 
+        
     # ======== Resume from Checkpoint ========
     # Checkpoints are stored in the output directory under the "checkpoints" folder.
     # To load the latest checkpoint, set the resume_from_checkpoint argument to "latest".
     # To load a specific checkpoint, set the resume_from_checkpoint argument to the name of the checkpoint.
+    # TODO should I abstract this all to resume_from_checkpoint?
     if args.resume_from_checkpoint:
-        checkpoint_name = args.resume_from_checkpoint
-        checkpoint_path = get_checkpoint_path(checkpoint_name, checkpoint_dir)
+        initial_global_step = resume_from_checkpoint(args.resume_from_checkpoint, checkpoint_dir, accelerator, logger)
+        # ==== Force new learning rate ====
 
-        if checkpoint_path is None or not checkpoint_path.exists():
-            logger.info(f"Checkpoint '{checkpoint_name}' does not exist. Starting a new training run.")
-            initial_global_step = 0
-        else: # Load Checkpoint
-            accelerator.wait_for_everyone()
-            accelerator.load_state(checkpoint_path)
-            global_step = get_global_step_from_checkpoint(checkpoint_path)
-            initial_global_step = global_step
+        # modify the deepspeed optimizer wrapper
+        for param_group in optimizer.param_groups:
+            param_group['initial_lr'] = args.lr
+            param_group['lr'] = args.lr
+
+        # modify the base scheduler's parameters
+        lr_scheduler.scheduler.base_lrs = [args.lr]
+
     else:
         logger.info("Starting a new training run.")
         initial_global_step = 0
 
+    global_step = initial_global_step
+    first_epoch = global_step // num_update_steps_per_epoch
 
+
+    # ==== Print Training Info ====
     logger.info(f"Number of Update Steps per Epoch: {num_update_steps_per_epoch}")
     logger.info(f"Val Steps: {args.val_steps}")
     logger.info(f"Epochs: {args.epochs}")
+    logger.info(f"Initial Global Step: {initial_global_step}")
     logger.info(f"Max Train Steps: {args.max_train_steps}")
 
-    global_step = initial_global_step
-    first_epoch = global_step // num_update_steps_per_epoch
-    steps_in_current_epoch = global_step % num_update_steps_per_epoch
-    logger.info(f"Steps in Current Epoch: {steps_in_current_epoch}")
-
+    # This doesn't hold because checkpoints might be saved mid gradient accumulation step.
+    # steps_in_current_epoch = global_step % num_update_steps_per_epoch
+    # logger.info(f"Steps in Current Epoch: {steps_in_current_epoch}")
     # train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
 
 
@@ -268,7 +272,7 @@ def main():
                 images, masks, names = batch 
                 batch_size = masks.shape[0]
 
-                # ==== Reshape data for stable diffusion standards ====
+                # ==== Copy single channel mask across RGB channels ====
                 masks_stacked = masks.unsqueeze(1).repeat(1,3,1,1).float() # dim 0 is batch?
 
                 # ==== Preprare for Encoder ====
@@ -295,16 +299,16 @@ def main():
                 ).to(device)
 
                 noise_ratio = get_noise_ratio(timesteps, noise_scheduler_copy, accelerator, n_dim=mask_latents.ndim, dtype=half_dtype)
-                # Add noise according to flow matching.
+                # Add noise according to rectified flow.
                 noisy_mask_latents = (1.0 - noise_ratio) * mask_latents + noise_ratio * noise
+
+                transformer_input = torch.cat([image_latents, noisy_mask_latents], dim=1)
 
                 # ==== Prepare Prompt Embeds ====
                 prompt_embeds_batch = prompt_embeds.repeat(batch_size, 1, 1)
                 pooled_prompt_embeds_batch = pooled_prompt_embeds.repeat(batch_size, 1)
 
                 # ==== Forward Pass ====
-                transformer_input = torch.cat([image_latents, noisy_mask_latents], dim=1)
-                
                 model_pred = transformer(
                         hidden_states=transformer_input,
                         timestep=timesteps,
@@ -312,29 +316,24 @@ def main():
                         pooled_projections=pooled_prompt_embeds_batch,
                         return_dict=False,
                     )[0]
-                logger.debug(f"Forward Pass Done")
 
-                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=noise_ratio)
                 target = noise - mask_latents
-                # Compute regular loss.
+
+                # Compute loss.
+                # TODO Explain this loss
+                weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=noise_ratio)
                 loss = torch.mean(
                     (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1),
                     1,
                 )
                 loss = loss.mean()
-                logger.debug(f"Loss Computed")
 
                 accelerator.backward(loss)
-                logger.debug(f"Backward Pass Done")
-                
                 optimizer.step()
-                 
-                logger.debug(f"Optimizer Step Done")
                 lr_scheduler.step()
-                logger.debug(f"LR Scheduler Step Done")
                 optimizer.zero_grad()
-                logger.debug(f"Optimizer Zero Grad Done")
 
+                # Accumulate for metrics
                 accum_loss += loss.detach().item()
                 accum_steps += 1
 
@@ -343,7 +342,8 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
 
-                grad_norm = transformer.get_global_grad_norm().item()
+                gn = transformer.get_global_grad_norm()
+                grad_norm = gn.item() if gn is not None else 0.0
 
                 logs = {"loss": accum_loss/accum_steps, "lr": lr_scheduler.get_last_lr()[0], "grad_norm": grad_norm}
                 progress_bar.set_postfix(**logs)
@@ -371,7 +371,7 @@ def main():
                         noise_scheduler=accelerator.unwrap_model(noise_scheduler),
                         data_loader=val_loader,
                         global_step=global_step,
-                        denoise_steps=30,
+                        denoise_steps=20,
                         num_vals=4,
                         ensemble_size=5,
                         logger=logger,
@@ -382,10 +382,9 @@ def main():
                     free_memory()
 
         accelerator.wait_for_everyone()
+        # NOTE gradient accumulation steps may cross epoch boundaries so saving at the end of the epoch is not ideal.
         accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
                 
-
-                    
     accelerator.end_training()
                              
 

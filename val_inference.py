@@ -170,7 +170,7 @@ def main():
         data_loader=val_loader,
         global_step=global_step,
         denoise_steps=20,
-        num_vals=1,
+        num_vals=4,
         ensemble_size=10,
         logger=logger,
     )
