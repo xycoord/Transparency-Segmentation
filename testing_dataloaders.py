@@ -30,16 +30,16 @@ val_loader = get_trans10k_val_loader(dataset_path, difficulty='easy')
 test_loader = get_trans10k_test_loader(dataset_path, difficulty='hard')
 
 def check_loader(loader):
-     print("Loader Length: ", len(loader))
-     for step, batch in enumerate(loader):
+    print("Loader Length: ", len(loader))
+    for step, batch in enumerate(loader):
 
-         image_data, mask, names = batch
+        image_data, mask, names = batch
 
-         print("Image Data Shape: ", image_data.shape)
-         print("Mask Shape: ", mask.shape)
-         print("Names: ", names)
+        print("Image Data Shape: ", image_data.shape)
+        print("Mask Shape: ", mask.shape)
+        print("Names: ", names)
 
-         break
+        break
 
 print("Train Loader Testing")
 check_loader(train_loader)
