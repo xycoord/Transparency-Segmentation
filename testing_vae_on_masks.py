@@ -1,4 +1,4 @@
-from dataset_configuration import prepare_dataset
+from dataset_configuration import get_trans10k_train_loader
 import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
@@ -10,13 +10,10 @@ dataset_path = '/home/xycoord/models/Trans10k/'
 train_batch_size = 1
 dataloader_num_workers = 4
 
-(train_loader, val_loader, test_loader), dataset_config_dict = prepare_dataset(
-            data_name=dataset_name,
-            dataset_path=dataset_path,
-            batch_size=train_batch_size,
-            test_batch=1,
-            datathread=dataloader_num_workers,
-            logger=None)
+train_loader = get_trans10k_train_loader(
+                dataset_path, 
+                batch_size=train_batch_size, # Batch given Per GPU
+               )
 
 base_model_path = "stabilityai/stable-diffusion-3.5-large"
 # base_model_path = "stabilityai/stable-diffusion-2"

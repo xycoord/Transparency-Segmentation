@@ -1,10 +1,9 @@
 import copy
-import gc
 import math
-from checkpoint_utils import get_checkpoint_path, get_global_step_from_checkpoint, resume_from_checkpoint
+from utils.checkpoint_utils import resume_from_checkpoint
 import torch
 from tqdm import tqdm
-from args_parser import parse_args
+from utils.args_parser import parse_args
 import os
 from pathlib import Path
 
@@ -23,9 +22,8 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 from deepspeed.utils import safe_get_full_grad
 
-from dataset_configuration import prepare_dataset
+from dataset_configuration import get_trans10k_train_loader, get_trans10k_val_loader
 from log_val import log_validation
-from lr_schedule_test import plot_lr_schedule
 from utils import compute_max_train_steps, load_prompt_embeds, get_noise_ratio, print_gpu_memory, sample_timesteps
 
 logger = get_logger(__name__)
@@ -145,17 +143,18 @@ def main():
         
     # ======== DATA LOADERS ======== 
     # Dataset: Trans10k
-    # See dataloader_trans10k.py for how the dataset is loaded.
+    # See dataset_configuration.py and dataloader_trans10k.py for how the dataset is loaded.
     # This is a streamlined version of the original Trans10k dataloader
     # Noteably, values for masks are either 0 or 1 and the "Things"/"Stuff" distinction is removed.
     with accelerator.main_process_first():
-        (train_loader, val_loader, test_loader), dataset_config_dict = prepare_dataset(
-            data_name=args.dataset_name,
-            dataset_path=args.dataset_path,
-            batch_size=args.train_batch_size, # Batch given Per GPU
-            test_batch=args.test_batch_size,
-            datathread=args.dataloader_num_workers,
-            logger=logger)
+        train_loader = get_trans10k_train_loader(
+                        args.dataset_path, 
+                        batch_size=args.train_batch_size, # Batch given Per GPU
+                        logger=logger)
+        val_loader = get_trans10k_val_loader(
+                        args.dataset_path, 
+                        difficulty='mix', # TODO: Use args here
+                        logger=logger)
     
 
     # ======== LEARNING RATE AND OPTIMIZER ========
@@ -199,8 +198,8 @@ def main():
 
     # ======== Prepare all with Accelerator ========
     # The accelerator wraps the components to handle multi-GPU training.
-    transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler = accelerator.prepare(
-        transformer, optimizer, train_loader, test_loader, val_loader, lr_scheduler
+    transformer, optimizer, lr_scheduler, train_loader, val_loader = accelerator.prepare(
+        transformer, optimizer, lr_scheduler, train_loader, val_loader
     )
     logger.info("Accelerator Prepared")
     
@@ -219,8 +218,8 @@ def main():
     # TODO should I abstract this all to resume_from_checkpoint?
     if args.resume_from_checkpoint:
         initial_global_step = resume_from_checkpoint(args.resume_from_checkpoint, checkpoint_dir, accelerator, logger)
-        # ==== Force new learning rate ====
 
+        # ==== Force new learning rate ====
         # modify the deepspeed optimizer wrapper
         for param_group in optimizer.param_groups:
             param_group['initial_lr'] = args.lr
