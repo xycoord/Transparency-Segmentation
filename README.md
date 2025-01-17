@@ -30,7 +30,28 @@ Google Drive links to download the data can be found on [the paper's website](ht
 The dataloader in this repo is based on [the original](https://github.com/xieenze/Segment_Transparent_Objects) but is much simplified for our purposes.
 
 ### Dependencies
+Tested using python 3.9 and 3.10. Newer versions <=3.12 will probably work.
 
+To install the dependencies into an active virtual environment:
+
+```
+pip install -r requirements.txt
+```
+
+*Note: Deepspeed 0.16 and Transformers create [this bug](https://github.com/microsoft/DeepSpeed/issues/6793) so use Deepseed 0.15.4 for now.*
+
+### Environment Variables
+Examples given for Linux where the lines should be added to ~/.bashrc
+
+To specify where the pretrained models are cached:
+```
+export HF_HOME=/path/to/cache
+```
+
+To speed up downloading of models (strongly recomended):
+```
+export HF_HUB_ENABLE_HF_TRANSFER=1
+``` 
 
 ### System
 

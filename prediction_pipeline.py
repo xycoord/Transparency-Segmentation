@@ -1,16 +1,18 @@
-from diffusers import DiffusionPipeline, AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscreteScheduler
-from diffusers.utils import BaseOutput
+from PIL import Image
+from typing import Union
+from tqdm import tqdm
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from PIL import Image
-from typing import Union
 
-from tqdm import tqdm
-
-from utils import load_prompt_embeds
+from diffusers import DiffusionPipeline, AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscreteScheduler
+from diffusers.utils import BaseOutput
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.training_utils import free_memory
+
+from utils.utils import load_prompt_embeds
+
 
 class MaskPipelineOutput(BaseOutput):
     mask_np: torch.Tensor

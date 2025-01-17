@@ -3,7 +3,6 @@ import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
 from tqdm import tqdm
-import time
 
 """
 This script is used to test the VAE on the Trans10k dataset.

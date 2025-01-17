@@ -1,5 +1,3 @@
-import torch
-
 import matplotlib.pyplot as plt
 
 def plot_lr_schedule(scheduler, num_steps, accelerator):

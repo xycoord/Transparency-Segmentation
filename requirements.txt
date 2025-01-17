@@ -1,0 +1,18 @@
+# General
+matplotlib==3.10.0
+
+# PyTorch
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
+
+# Hugging Face
+accelerate==1.2.1
+diffusers==0.32.1
+transformers==4.47.1
+
+# Multi-GPU
+deepspeed==0.15.4
+
+# Tracking
+wandb==0.19.1

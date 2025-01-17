@@ -1,5 +1,5 @@
 from dataset_configuration import get_trans10k_train_loader, get_trans10k_test_loader, get_trans10k_val_loader
-from utils import load_prompt_embeds
+from utils.utils import load_prompt_embeds
 
 """
 This script is used to test the dataloaders for the Trans10k dataset and the Embeddings for the prompts.
