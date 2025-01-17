@@ -9,7 +9,7 @@ device = "cuda"
 dtype = torch.bfloat16
 prompt = [""]
 negative_prompt = [""]
-save_folder_path = Path("./precomputed_prompt_embeddings")
+save_folder_path = Path("../precomputed_prompt_embeddings")
 prompt_embeds_path = save_folder_path / "empty_prompt_embeds.pt"
 pooled_prompt_embeds_path = save_folder_path / "empty_pooled_prompt_embeds.pt"
 

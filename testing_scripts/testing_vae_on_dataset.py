@@ -1,8 +1,14 @@
-from dataset_configuration import get_trans10k_train_loader
 import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
 from tqdm import tqdm
+
+import sys
+import os
+# Pretend we are running from the root directory
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dataloaders.dataset_configuration import get_trans10k_train_loader
 
 """
 This script is used to test the VAE on the Trans10k dataset.

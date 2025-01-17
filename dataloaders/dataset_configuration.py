@@ -1,11 +1,10 @@
+import os
+
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
 
-import os
-import sys
-sys.path.append("..")
+from dataloaders.dataloader_trans10k.trans10k import TransSegmentation as Trans10k
 
-from dataloader_trans10k.trans10k import TransSegmentation as Trans10k
 
 
 def get_trans10k_train_loader(dataset_path, batch_size=1, logger=None):

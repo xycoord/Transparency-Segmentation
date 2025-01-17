@@ -1,4 +1,9 @@
-from dataset_configuration import get_trans10k_train_loader, get_trans10k_test_loader, get_trans10k_val_loader
+import sys
+import os
+# Pretend we are running from the root directory
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dataloaders.dataset_configuration import get_trans10k_train_loader, get_trans10k_test_loader, get_trans10k_val_loader
 from utils.utils import load_prompt_embeds
 
 """

@@ -15,13 +15,14 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.optimization import get_cosine_schedule_with_warmup
 from diffusers.training_utils import compute_loss_weighting_for_sd3, free_memory
 
-from dataset_configuration import get_trans10k_train_loader, get_trans10k_val_loader
-from log_val import log_validation
+from dataloaders.dataset_configuration import get_trans10k_train_loader, get_trans10k_val_loader
 
 from utils.utils import load_prompt_embeds, compute_max_train_steps
 from utils.checkpoint_utils import resume_from_checkpoint
 from utils.args_parser import parse_args
 from utils.stable_diffusion_3 import sample_timesteps, get_noise_ratio
+
+from log_val import log_validation
 
 logger = get_logger(__name__)
 
