@@ -46,11 +46,11 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         log_with="wandb",
     )
+    device = accelerator.device
 
     # ==== Mixed Precision ====
     half_dtype = args.torch_dtype
     full_dtype = torch.float32
-    device = accelerator.device
 
     # ==== Logging ====
     # Make one log on every process with the configuration for debugging.
@@ -151,7 +151,7 @@ def main():
                         logger=logger)
         val_loader = get_trans10k_val_loader(
                         args.dataset_path, 
-                        difficulty='mix', # TODO: Use args here
+                        difficulty=args.val_difficulty,
                         logger=logger)
     
 
@@ -205,8 +205,6 @@ def main():
     num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = num_update_steps_per_epoch * args.epochs
-    # Automatically set val steps
-    args.val_steps = math.ceil(num_update_steps_per_epoch / 2) 
 
         
     # ======== Resume from Checkpoint ========
@@ -232,6 +230,10 @@ def main():
 
     global_step = initial_global_step
     first_epoch = global_step // num_update_steps_per_epoch
+    steps_in_current_epoch = global_step % num_update_steps_per_epoch
+
+    first_train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
+    rest_train_loader = train_loader
 
 
     # ==== Print Training Info ====
@@ -239,30 +241,28 @@ def main():
     logger.info(f"Val Steps: {args.val_steps}")
     logger.info(f"Epochs: {args.epochs}")
     logger.info(f"Initial Global Step: {initial_global_step}")
+    logger.info(f"Steps in Current Epoch: {steps_in_current_epoch}")
     logger.info(f"Max Train Steps: {args.max_train_steps}")
-
-    # This doesn't hold because checkpoints might be saved mid gradient accumulation step.
-    # steps_in_current_epoch = global_step % num_update_steps_per_epoch
-    # logger.info(f"Steps in Current Epoch: {steps_in_current_epoch}")
-    # train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
-
 
     # ======== TRAINING LOOP ========
     
     for epoch in range(first_epoch, args.epochs):
+
+        logger.info(f"Epoch {epoch}")
+
         transformer.train()
         accum_loss = 0.0
         accum_steps = 0
 
-        logger.info(f"Epoch {epoch}")
-
         progress_bar = tqdm(
             range(0, num_update_steps_per_epoch),
-            initial=0,
+            initial=0 if epoch > first_epoch else steps_in_current_epoch,
             desc="Steps",
             # Only show the progress bar once on each machine.
             disable=not accelerator.is_local_main_process,
         )
+
+        train_loader = first_train_loader if epoch == first_epoch else rest_train_loader
 
         for batch in train_loader:
             with accelerator.accumulate(transformer):
@@ -287,6 +287,7 @@ def main():
 
                 # ==== Noise ====
                 noise = torch.randn_like(mask_latents)
+
                 timesteps = sample_timesteps(
                     noise_scheduler=noise_scheduler_copy, 
                     batch_size=batch_size, 
@@ -296,6 +297,7 @@ def main():
                 ).to(device)
 
                 noise_ratio = get_noise_ratio(timesteps, noise_scheduler_copy, accelerator, n_dim=mask_latents.ndim, dtype=half_dtype)
+
                 # Add noise according to rectified flow.
                 noisy_mask_latents = (1.0 - noise_ratio) * mask_latents + noise_ratio * noise
 
@@ -316,14 +318,19 @@ def main():
 
                 target = noise - mask_latents
 
-                # Compute loss.
-                # TODO Explain this loss
+                
+                # ==== Loss ====
+                # Weighted MSE Loss as per SD3 paper 
+                # NOTE We are using the "logit_norm" weighting scheme so the weighting is just 1s.
+                # Hence, the weighting is unimportant in the loss calculation.
                 weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=noise_ratio)
-                loss = torch.mean(
-                    (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1),
-                    1,
-                )
-                loss = loss.mean()
+                raw_mse_loss = weighting.float() * (model_pred.float() - target.float()) ** 2
+                loss = raw_mse_loss.mean()
+
+                # We assume a fixed sample size of 128x128 for the above calculations.
+                # If the sample size changes, the loss will need to be adjusted accordingly:
+                # loss_per_sample = torch.mean(raw_mse_loss.reshape(batch_size, -1), 1)
+                # loss = loss_per_sample.mean()
 
                 accelerator.backward(loss)
                 optimizer.step()
@@ -350,9 +357,9 @@ def main():
                 accum_steps = 0
 
                 # ==== Save checkpoint ====
-                # if global_step % args.save_checkpoint_steps == 0 and global_step > 0:
-                #     accelerator.wait_for_everyone()
-                #     accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
+                if global_step % args.save_checkpoint_steps == 0 and global_step > 0:
+                    accelerator.wait_for_everyone()
+                    accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
                 
                 # ==== Validation ====
                 if global_step % args.val_steps == 0 and global_step > 0:
@@ -378,10 +385,6 @@ def main():
 
                     free_memory()
 
-        accelerator.wait_for_everyone()
-        # NOTE gradient accumulation steps may cross epoch boundaries so saving at the end of the epoch is not ideal.
-        accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
-                
     accelerator.end_training()
                              
 

@@ -8,11 +8,11 @@ model:
     type: str
     help: Data type for training
 
-prompt_embeds:
-  prompt_embeds_path:
-    default: './precomputed_prompt_embeddings/'
+project_config:
+  output_dir:
+    default: '/home/xycoord/output'
     type: str
-    help: Path to prompt embeds
+    help: Output directory
 
 dataset:
   dataset_path:
@@ -23,22 +23,28 @@ dataset:
     default: 'trans10k'
     type: str
     help: Name of dataset
-  train_batch_size:
-    default: 4
-    type: int
-    help: Batch size for training
-  test_batch_size:
-    default: 1
-    type: int
-    help: Batch size for testing
+  val_difficulty:
+    default: 'mix'
+    type: str
+    help: Difficulty level for validation dataset ['easy', 'hard', 'mix']
+  test_difficulty:
+    default: 'mix'
+    type: str
+    help: Difficulty level for test dataset ['easy', 'hard', 'mix']
   dataloader_num_workers:
     default: 4
     type: int
     help: Number of workers for dataloader
 
+prompt_embeds:
+  prompt_embeds_path:
+    default: './precomputed_prompt_embeddings/'
+    type: str
+    help: Path to prompt embeds
+
 training:
   resume_from_checkpoint:
-    default: checkpoint-2347 
+    default: null 
     type: str
     help: Path to checkpoint to resume from
   epochs:
@@ -49,19 +55,28 @@ training:
     default: null
     type: int
     help: Maximum number of training steps
-
+  train_batch_size:
+    default: 4
+    type: int
+    help: Batch size for training
   gradient_accumulation_steps:
     default: 4
     type: int
     help: Gradient accumulation steps
   save_checkpoint_steps:
-    default: 79 
+    default: 200 
     type: int
     help: Save checkpoint every n steps
   val_steps:
-    default: 10 
+    default: 100 
     type: int
     help: Validate every n steps
+
+validation:
+  load_checkpoint: 
+    default: checkpoint-2347
+    type: str
+    help: Path to checkpoint to load for validation
 
 optimizer:
   adam_beta1:
@@ -118,14 +133,9 @@ noise:
     type: float
     help: Scale of mode weighting scheme. Only effective when using the `'mode'` as the `weighting_scheme`.
 
-gradient_clipping:
+gradient_clipping: # Ignore this if using DeepSpeed 
   max_grad_norm:
     default: 0.01 #1.0
     type: float
     help: Maximum gradient norm
       
-project_config:
-  output_dir:
-    default: '/home/xycoord/output'
-    type: str
-    help: Output directory

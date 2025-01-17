@@ -70,9 +70,6 @@ class PredictionPipeline(DiffusionPipeline):
                 - mask_pil (PIL.Image): The colored mask visualization
                 - mask_vae (PIL.Image): The VAE-processed mask
                 - uncertainty (None): Placeholder for uncertainty metrics
-
-        Note:
-            Currently only supports batch size of 1.
         """
 
         # ==== Prepare Prompt Embeds ====
@@ -92,8 +89,6 @@ class PredictionPipeline(DiffusionPipeline):
         # Scale so latents behave well with diffusion
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         mask_latents = (mask_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-
-        # assert image_latents.shape[0] == 1 # Only support batch size 1 for now (TODO)
 
         output = self.generate_ensembled_mask(ensemble_size, image_latents, denoise_steps, batch_size, prompt_embeds_batch, pooled_prompt_embeds_batch)
 
@@ -119,8 +114,8 @@ class PredictionPipeline(DiffusionPipeline):
         repeated_image_latents = image_latents.repeat_interleave(repeats=ensemble_size, dim=0)
 
         ensemble_image_dataset = TensorDataset(repeated_image_latents)
-        _bs = batch_size if batch_size > 0 else 1 # TODO bad variable name
-        ensemble_image_loader = DataLoader(ensemble_image_dataset,batch_size=_bs,shuffle=False)
+        batch_size = batch_size if batch_size > 0 else 1 
+        ensemble_image_loader = DataLoader(ensemble_image_dataset,batch_size=batch_size,shuffle=False)
 
         mask_preds = []
         
@@ -131,7 +126,7 @@ class PredictionPipeline(DiffusionPipeline):
         for batch in iterable_bar:
             (batched_image,)= batch  # here the image is still around 0-1
             self.noise_scheduler.set_timesteps(denoise_steps, device=self.device)
-            output_latents, noise = self.generate_single_mask(_bs, batched_image, prompt_embeds_batch, pooled_prompt_embeds_batch)
+            output_latents, noise = self.generate_single_mask(batch_size, batched_image, prompt_embeds_batch, pooled_prompt_embeds_batch)
             output_latents = (output_latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             mask_pred_raw = self.vae.decode(output_latents).sample
             mask_pred_raw = self.vae_image_processor.postprocess(mask_pred_raw, output_type='pt')

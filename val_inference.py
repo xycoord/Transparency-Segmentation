@@ -116,7 +116,7 @@ def main():
         
     # ======== DATA LOADERS ======== 
     with accelerator.main_process_first():
-        val_loader = get_trans10k_val_loader(args.dataset_path, difficulty='mix', logger=logger)
+        val_loader = get_trans10k_val_loader(args.dataset_path, difficulty=args.val_difficulty, logger=logger)
         # TODO: Generalize to Testing with a flag 
 
 
@@ -131,8 +131,8 @@ def main():
     # Checkpoints are stored in the output directory under the "checkpoints" folder.
     # To load the latest checkpoint, set the resume_from_checkpoint argument to "latest".
     # To load a specific checkpoint, set the resume_from_checkpoint argument to the name of the checkpoint.
-    if args.resume_from_checkpoint:
-        checkpoint_name = args.resume_from_checkpoint
+    if args.load_checkpoint:
+        checkpoint_name = args.load_checkpoint
         checkpoint_path = get_checkpoint_path(checkpoint_name, checkpoint_dir)
 
         if checkpoint_path is None or not checkpoint_path.exists():

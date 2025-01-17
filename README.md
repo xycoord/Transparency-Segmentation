@@ -21,7 +21,7 @@ The previous version used Stable Diffusion 2 as in Marigold. Notable changes inc
 - 16 channel latent space (vs 4 in SD2). This [has been shown](https://arxiv.org/pdf/2309.15807) to improve preservation of fine details leading to better reproduction of text. I am yet to conclude whether it improves reproduction of useful cues for transparent objects.
 
 
-## Requirements 
+## Setup 
 
 ### Dataset
 I use the Trans10k dataset from [Segmenting Transparent Objects in the Wild](https://arxiv.org/abs/2003.13948).
@@ -53,7 +53,13 @@ To speed up downloading of models (strongly recomended):
 export HF_HUB_ENABLE_HF_TRANSFER=1
 ``` 
 
-### System
+### Config
+Arguments for the scripts are defined in `config.yaml` and loaded into `args`.
+Any argument can be set either by editing `config.yaml` or using a command line argument when launching the script to override the default.
+
+Make sure to set `output_dir` and `dataset_path` for your setup.
+
+### System Requirements
 
 I have successfully run training on:
 - 4x Nvidia L4 (Total 96GB VRAM)
@@ -62,6 +68,7 @@ I have successfully run training on:
 And Inference on:
 - 1x Nvidia L4 (24GB VRAM)
 - 48GB RAM
+
 
 ## Run
 
@@ -77,6 +84,7 @@ accelerate launch --config_file accelerate_config.yaml val_inference.py
 
 Other scripts don't use Accelerate and can be launched with python as normal.
 
+
 ## Key Libraries
 
 ### Accelerate (🤗 Hugging Face) [[Docs]](https://huggingface.co/docs/accelerate/en/index)
@@ -86,7 +94,6 @@ Therefore it also handles optimizer steps, gradient accumulation, logging, and t
 
 Before running anything, update `accelerate_config.yaml` such that `num_processes` matches your number of GPUs *or* use your own config file.
 
-
 ### DeepSpeed [[Docs]](https://huggingface.co/docs/accelerate/en/usage_guides/deepspeed)
 DeepSpeed helps with reducing memory usage in two ways:
 1. Split Optimizer, Gradient and/or Parameters across GPUs
@@ -94,20 +101,17 @@ DeepSpeed helps with reducing memory usage in two ways:
 
 This project uses the Accelerate DeepSpeed Plugin which is set-up automatically as specified in `accelerate_config.yaml`. For details about these settings see the Docs.
 
-Note: *When used, DeepSpeed takes over gradient clipping from Accelerate so make sure to set it in the DeepSpeed config. If using a single large GPU (e.g. 80GB A100), it may be worth disabling DeepSpeed. If you do this, add gradient clipping to the code with Accelerate.*
+*Note: When used, DeepSpeed takes over gradient clipping from Accelerate so make sure to set it in the DeepSpeed config. If using a single large GPU (e.g. 80GB A100), it may be worth disabling DeepSpeed. If you do this, add gradient clipping to the code with Accelerate.*
 
 
 ### Diffusers (🤗 Hugging Face) [[Docs]](https://huggingface.co/docs/diffusers/index)
 Diffusers is a toolkit for working with diffusion model. 
 We primarily use it to load the pre-trained models from Hugging Face Hub.
 
+
 ## Tracking
 I use Weights and Biases for experiment tracking. This is handled by Accelerate.
 To learn how to set this up or swap trackers see [this guide](https://huggingface.co/docs/accelerate/en/usage_guides/tracking).
-
-## Config
-Arguments for the scripts are defined in `config.yaml` and loaded into `args`.
-Any argument can be set either by editing `config.yaml` or using a command line argument when launching the script to override the default.
 
 
 ## Current Progress/Results
