@@ -10,7 +10,7 @@ model:
 
 project_config:
   output_dir:
-    default: '/home/xycoord/output'
+    default: '/home/xycoord/output-e2e'
     type: str
     help: Output directory
 
@@ -60,7 +60,7 @@ training:
     type: int
     help: Batch size for training
   gradient_accumulation_steps:
-    default: 4
+    default: 4 #Change to 2 for 4 GPUs
     type: int
     help: Gradient accumulation steps
   save_checkpoint_steps:

@@ -27,6 +27,8 @@ class PredictionPipeline(DiffusionPipeline):
                  transformer:SD3Transformer2DModel,
                  vae:AutoencoderKL,
                  noise_scheduler:FlowMatchEulerDiscreteScheduler,
+                 use_zeros_start:bool = False,
+                 quantize:bool = True,
                  ):
         super().__init__()
             
@@ -35,6 +37,8 @@ class PredictionPipeline(DiffusionPipeline):
             vae=vae,
             noise_scheduler=noise_scheduler,
         )
+        self.use_zeros_start = use_zeros_start
+        self.quantize = quantize
 
         self.vae_image_processor = VaeImageProcessor(do_normalize=True)
 
@@ -160,22 +164,26 @@ class PredictionPipeline(DiffusionPipeline):
         ensemble_mean = channel_mean.mean(dim=1, keepdim=False)
 
         # Quantize each pixel to 0 or 1
-        quantized_mean = self.quantize_tensor(ensemble_mean)
-
-        return quantized_mean 
+        if self.quantize:
+            quantized_mean = self.quantize_tensor(ensemble_mean)
+            return quantized_mean 
+        else:
+            return ensemble_mean
 
     def quantize_tensor(self, tensor):
         return (tensor > 0.5).float()
 
     def generate_single_mask(self, batch_size, image_latents, prompt_embeds_batch, pooled_prompt_embeds_batch):
         # ==== Noise ====
-        noise = torch.randn_like(image_latents)
+        if self.use_zeros_start:
+            noise = torch.zeros_like(image_latents)
+        else:
+            noise = torch.randn_like(image_latents)
         latents = noise
         
         # ==== Denoise ====
         for t in tqdm(self.noise_scheduler.timesteps):
             timestep = t.expand(batch_size).to(self.device)
-
             transformer_input = torch.cat([image_latents, latents], dim=1)
 
             # predict the noise residual
@@ -191,6 +199,9 @@ class PredictionPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             # latents = scheduler.step(noise_pred, t, latents).prev_sample
-            latents = self.noise_scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+            if self.use_zeros_start:
+                latents = noise_pred
+            else:
+                latents = self.noise_scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
         return latents, noise

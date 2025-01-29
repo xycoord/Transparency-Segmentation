@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-def plot_lr_schedule(scheduler, num_steps, accelerator):
+def plot_lr_schedule(scheduler, num_steps, accelerator=None):
     """
     Plot learning rate schedule for a given PyTorch scheduler
     
@@ -13,7 +13,7 @@ def plot_lr_schedule(scheduler, num_steps, accelerator):
         lrs.append(scheduler.get_last_lr()[0])
         scheduler.step()
 
-    if accelerator.is_main_process:
+    if accelerator is None or accelerator.is_main_process:
         plt.figure(figsize=(10, 5))
         plt.plot(range(num_steps), lrs)
         plt.xlabel('Steps')

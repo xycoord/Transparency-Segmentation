@@ -3,7 +3,7 @@ from prediction_pipeline import PredictionPipeline
 from pathlib import Path
 
 
-def log_validation(args, accelerator, vae, transformer, noise_scheduler, data_loader, global_step, denoise_steps=50, num_vals=10, ensemble_size=10, logger=None):
+def log_validation(args, accelerator, vae, transformer, noise_scheduler, data_loader, global_step, denoise_steps=50, num_vals=10, ensemble_size=10, use_zeros_start=False, quantize=True, logger=None):
 
     device = accelerator.device
 
@@ -13,6 +13,8 @@ def log_validation(args, accelerator, vae, transformer, noise_scheduler, data_lo
         transformer=transformer,
         vae=vae,
         noise_scheduler=noise_scheduler,
+        use_zeros_start=use_zeros_start,
+        quantize=quantize,
     )
     pipeline.to(device)
 
