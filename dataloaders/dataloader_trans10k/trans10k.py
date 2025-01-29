@@ -77,6 +77,9 @@ class TransSegmentation(object):
         img = Image.open(self.images[index]).convert('RGB')
         mask = Image.open(self.mask_paths[index])
 
+        if img.size[0] != mask.size[0] or img.size[1] != mask.size[1]:
+            raise Exception(f'Image and mask size do not match: {self.images[index]}, {img.size}, {mask.size}')
+
         img = np.array(img)
         mask = np.array(mask)[:,:,:3].mean(-1)
 
@@ -92,14 +95,10 @@ class TransSegmentation(object):
         # Augmentation and Normalization
         augmented = self.augmentation(image=img, mask=mask)
         augmented = self.transform(image=augmented['image'], mask=augmented['mask'])
-        img_aug = augmented['image'].to(torch.float32)
-        mask_aug = augmented['mask'].to(torch.float32)
+        img = augmented['image'].to(torch.float32)
+        mask = augmented['mask'].to(torch.float32)
 
-        transformed = self.transform(image=img, mask=mask)
-        img = transformed['image'].to(torch.float32)
-        mask = transformed['mask'].to(torch.float32)
-        
-        return img, mask, img_aug, mask_aug, os.path.basename(self.images[index])
+        return img, mask, os.path.basename(self.images[index])
 
     def __len__(self):
         return len(self.images)

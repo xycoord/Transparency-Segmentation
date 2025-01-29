@@ -41,22 +41,18 @@ def prepare_dataloader(data_name,
     height = 1024
     width = 1024
 
-    augmentation = A.Compose([
-        # Spatial transforms - will be applied to both image and mask
-        # A.RandomCrop(height=1024, width=1024),
-        A.HorizontalFlip(p=0.5),
-        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
-        
-        # Pixel-level transforms - will only be applied to the image
-        A.OneOf([
-            A.RandomBrightnessContrast(p=1.0),
-            A.RandomGamma(p=1.0),
-        ], p=0.5),
-        A.OneOf([
-            A.GaussNoise(p=1.0),
-            A.GaussianBlur(p=1.0),
-        ], p=0.3)
-    ])
+    if split == 'train':
+        augmentation = A.Compose([
+            A.HorizontalFlip(p=0.5),
+            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
+            A.OneOf([
+                A.MotionBlur(blur_limit=(11, 31), p=1.0),
+                A.GaussianBlur(blur_limit=(11, 31), p=1.0),
+            ], p=0.3),
+            A.GaussNoise(std_range=(0.1,0.3),p=0.3),
+        ])
+    else:
+        augmentation = A.NoOp()
 
     transform = A.Compose([
         A.Resize(height=height, width=width, interpolation=cv2.INTER_LINEAR, mask_interpolation=cv2.INTER_NEAREST),
