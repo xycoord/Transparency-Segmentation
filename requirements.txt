@@ -16,3 +16,6 @@ deepspeed==0.15.4
 
 # Tracking
 wandb==0.19.1
+
+# Data Augmentation
+albumentations

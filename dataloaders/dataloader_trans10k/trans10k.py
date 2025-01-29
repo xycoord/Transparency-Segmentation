@@ -5,9 +5,10 @@ import numpy as np
 import logging
 
 from PIL import Image
-from .seg_data_base import SegmentationDataset
 
-class TransSegmentation(SegmentationDataset):
+from .settings import cfg
+
+class TransSegmentation(object):
     """Trans10K Semantic Segmentation Dataset.
 
     Parameters
@@ -16,16 +17,34 @@ class TransSegmentation(SegmentationDataset):
         Path to Trans10K folder. Default is './datasets/Trans10K'
     split: string
         'train', 'validation', 'test'
+    difficulty: string
+        'easy', 'hard', 'mix'
+    mode : string
+        'train', 'val', 'testval'
     transform : callable, optional
         A function that transforms the image
+    augmentation : callable, optional
+        A function that augments the image 
+    ignore_class : bool, optional
+        Whether to ignore the class 'things' and 'stuff' and only consider 'transparency'
     """
     NUM_CLASS = 3
 
 
-    def __init__(self, root='./datasets/Trans10K', split='train', difficulty='mix', mode=None, transform=None, **kwargs):
-        super(TransSegmentation, self).__init__(root, split, mode, transform, **kwargs)
+    def __init__(self, root='./datasets/Trans10K', split='train', difficulty='mix', mode=None, transform=None, augmentation=None, ignore_class=True):
+        super(TransSegmentation, self).__init__()
 
+        self.root = os.path.join(cfg.ROOT_PATH, root)
         assert os.path.exists(self.root), "Please put dataset in {SEG_ROOT}/datasets/Trans10K"
+
+        self.split = split
+        self.mode = mode if mode is not None else split
+
+        self.transform = transform
+        self.augmentation = augmentation 
+
+        self.ignore_class = ignore_class
+
 
         self.images, self.mask_paths = _get_trans10k_pairs(self.root, self.split, difficulty=difficulty)
 
@@ -34,8 +53,13 @@ class TransSegmentation(SegmentationDataset):
         if len(self.images) == 0:
             raise RuntimeError("Found 0 images in subfolders of:" + root + "\n")
 
-        self.valid_classes = [0,1,2]
-        self._key = np.array([0,1,2])
+        if ignore_class:
+            self.valid_classes = [0,1]
+            self._key = np.array([0,1])
+        else:
+            self.valid_classes = [0,1,2]
+            self._key = np.array([0,1,2])
+        
         self._mapping = np.array(range(-1, len(self._key) - 1)).astype('int32') + 1
 
 
@@ -50,40 +74,32 @@ class TransSegmentation(SegmentationDataset):
 
 
     def __getitem__(self, index):
-
-        # Image
         img = Image.open(self.images[index]).convert('RGB')
-        if self.mode == 'test':
-            if self.transform is not None:
-                img = self.transform(img)
-            return img, os.path.basename(self.images[index])
-
-        # Mask
         mask = Image.open(self.mask_paths[index])
+
+        img = np.array(img)
         mask = np.array(mask)[:,:,:3].mean(-1)
+
         # Things and Stuff
-        mask[mask==85.0] = 1
-        mask[mask==255.0] = 2
-        assert mask.max()<=2, mask.max()
-        mask = Image.fromarray(mask)
-
-        # synchrosized transform
-        if self.mode == 'train':
-            img, mask = self._sync_transform(img, mask)
-        elif self.mode == 'val':
-            img, mask = self._val_sync_transform(img, mask)
+        if self.ignore_class:
+            mask[mask!=0] = 1
+            assert mask.max()<=1, mask.max()
         else:
-            assert self.mode == 'testval'
-            img, mask = self._val_sync_transform(img, mask)
+            mask[mask==85.0] = 1
+            mask[mask==255.0] = 2 
+            assert mask.max()<=2, mask.max()
 
-        # general resize, normalize and toTensor
-        if self.transform is not None:
-            img = self.transform(img)
-        return img, mask, os.path.basename(self.images[index])
+        # Augmentation and Normalization
+        augmented = self.augmentation(image=img, mask=mask)
+        augmented = self.transform(image=augmented['image'], mask=augmented['mask'])
+        img_aug = augmented['image'].to(torch.float32)
+        mask_aug = augmented['mask'].to(torch.float32)
 
-    def _mask_transform(self, mask):
-        target = self._class_to_index(np.array(mask).astype('int32'))
-        return torch.LongTensor(np.array(target).astype('int32'))
+        transformed = self.transform(image=img, mask=mask)
+        img = transformed['image'].to(torch.float32)
+        mask = transformed['mask'].to(torch.float32)
+        
+        return img, mask, img_aug, mask_aug, os.path.basename(self.images[index])
 
     def __len__(self):
         return len(self.images)
@@ -99,7 +115,16 @@ class TransSegmentation(SegmentationDataset):
     @property
     def classes(self):
         """Category names."""
+        if self.ignore_class:
+            return ('background', 'transparency')
         return ('background', 'things', 'stuff')
+
+    @property
+    def num_class(self):
+        """Number of categories."""
+        if self.ignore_class:
+            return 2
+        return self.NUM_CLASS
     
 
 def _get_trans10k_pairs(folder, split='train', difficulty='mix'):

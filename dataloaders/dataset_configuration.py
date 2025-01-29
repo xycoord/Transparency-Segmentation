@@ -3,6 +3,10 @@ import os
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
 
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+import cv2
+
 from dataloaders.dataloader_trans10k.trans10k import TransSegmentation as Trans10k
 
 
@@ -34,17 +38,41 @@ def prepare_dataloader(data_name,
 
     datathread = check_datathread(datathread, logger)
 
+    height = 1024
+    width = 1024
+
+    augmentation = A.Compose([
+        # Spatial transforms - will be applied to both image and mask
+        # A.RandomCrop(height=1024, width=1024),
+        A.HorizontalFlip(p=0.5),
+        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
+        
+        # Pixel-level transforms - will only be applied to the image
+        A.OneOf([
+            A.RandomBrightnessContrast(p=1.0),
+            A.RandomGamma(p=1.0),
+        ], p=0.5),
+        A.OneOf([
+            A.GaussNoise(p=1.0),
+            A.GaussianBlur(p=1.0),
+        ], p=0.3)
+    ])
+
+    transform = A.Compose([
+        A.Resize(height=height, width=width, interpolation=cv2.INTER_LINEAR, mask_interpolation=cv2.INTER_NEAREST),
+        ToTensorV2()
+    ])
+
     # Load Datasets
-    image_size = 1024
-    dataset_kwargs = {'transform': ToTensor(), 'base_size': image_size,}
+    dataset_kwargs = {'transform': transform, 'augmentation': augmentation}
     dataset = Trans10k(dataset_path, split=split, mode=mode, **dataset_kwargs)
 
     # Set up data loaders
-    train_loader = DataLoader(dataset, batch_size = batch_size, \
+    data_loader = DataLoader(dataset, batch_size = batch_size, \
                             shuffle = shuffle, num_workers = datathread, \
                             pin_memory = True)
 
-    return train_loader
+    return data_loader
 
 
 def check_datathread(datathread, logger=None):
