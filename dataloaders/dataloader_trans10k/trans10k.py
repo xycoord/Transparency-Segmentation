@@ -69,7 +69,7 @@ class TransSegmentation(object):
         # Augmentation and Normalization
         augmented = self.augmentation(image=img, mask=mask)
         augmented = self.transform(image=augmented['image'], mask=augmented['mask'])
-        img = augmented['image'].to(torch.float32)
+        img = augmented['image'].to(torch.float32) / 255.0
         mask = augmented['mask'].to(torch.float32)
 
         return img, mask, self.image_paths[index].name
