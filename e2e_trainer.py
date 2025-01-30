@@ -8,20 +8,20 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 
 import logging
+
 import transformers
 import diffusers
 from diffusers import AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscreteScheduler
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.optimization import get_cosine_schedule_with_warmup
 from diffusers.training_utils import compute_loss_weighting_for_sd3, free_memory
 
 from dataloaders.dataset_configuration import get_trans10k_train_loader, get_trans10k_val_loader
 
-from lr_range_finder import create_lr_range_test_scheduler
-from utils.utils import load_prompt_embeds, compute_max_train_steps
+from utils.utils import compute_checkpoint_steps, compute_warmup_steps, load_prompt_embeds, compute_max_train_steps, scale_lr
 from utils.checkpoint_utils import resume_from_checkpoint
 from utils.args_parser import parse_args
 from utils.stable_diffusion_3 import sample_timesteps, get_noise_ratio
+from utils.lr_scheduler import get_cosine_schedule_with_warmup, plot_lr_schedule
 
 from log_val import log_validation
 
@@ -71,19 +71,19 @@ def main():
     # ==== Tracking ==== 
     # Trackers (Weights and Biases) record metrics such as loss and learning rate during training.
     # Weight and Biases lets us visualize these in a web interface.
-    # accelerator.init_trackers(
-    #     "sd3-finetune-transparency-e2e",
-    #     config={
-    #     "dataset": "trans10k",
-    #     "epochs": args.epochs,
-    #     "batch_size": args.train_batch_size,
-    #     "learning_rate": args.lr,
-    #     "num_warmup_steps": args.lr_warmup_steps,
-    #     "num_cycles": args.lr_cycles,
-    #     "max_grad_norm": args.max_grad_norm,
-    #     "num_processes": accelerator.num_processes,
-    #     }
-    # )
+    accelerator.init_trackers(
+        "sd3-finetune-transparency-e2e",
+        config={
+        "dataset": "trans10k",
+        "epochs": args.epochs,
+        "batch_size": args.train_batch_size,
+        "learning_rate": args.lr,
+        "num_warmup_steps": args.lr_warmup_steps,
+        "num_cycles": args.lr_cycles,
+        "max_grad_norm": args.max_grad_norm,
+        "num_processes": accelerator.num_processes,
+        }
+    )
 
 
     # ======== LOAD MODELS ========
@@ -117,10 +117,10 @@ def main():
         # use_safetensors=True,
         torch_dtype=full_dtype, # Load with full precision for safety
         low_cpu_mem_usage=False,
-        in_channels=32, # 16 for masks + 16 for images 
+        in_channels=16, 
         out_channels=16,
         # We've made a modification to the architecture so need to tell Diffusers that this is intended.
-        ignore_mismatched_sizes=True,
+        # ignore_mismatched_sizes=True,
         # Sample size and qk norm use these values anyway, but we set them explicitly to be clear
         sample_size=128,
         qk_norm="rms_norm"
@@ -158,14 +158,27 @@ def main():
 
     # ======== LEARNING RATE AND OPTIMIZER ========
 
-    # ==== Scale Learning Rate ====
-    # When the effective batch size is changed the learning rate must be scaled accordingly.
-    # The lr set in the args is the learning rate for a batch of 1.
-    args.lr = 1e-7
-    prescaled_lr = args.lr
     effective_batch_size = args.train_batch_size * args.gradient_accumulation_steps * accelerator.num_processes
-    args.lr = prescaled_lr * effective_batch_size
-    logger.info(f"Learning Rate Scaled: {prescaled_lr} -> {args.lr}")
+    num_update_steps_per_epoch = math.ceil(len(train_loader) / (args.gradient_accumulation_steps * accelerator.num_processes))
+    logger.info(f"Effective Batch Size: {effective_batch_size}")
+    logger.info(f"Number of Update Steps per Epoch: {num_update_steps_per_epoch}")
+    
+    # ==== Scale Args ====
+    args.lr = scale_lr(args.lr, effective_batch_size, logger=logger)
+
+    args.max_train_steps, overrode_max_train_steps = compute_max_train_steps(
+        num_update_steps_per_epoch,
+        args.epochs,
+        args.gradient_accumulation_steps,
+        logger=logger,
+        max_train_steps= args.max_train_steps,
+    )
+
+    args.lr_warmup_steps = compute_warmup_steps(
+        num_update_steps_per_epoch,
+        args.lr_warmup_steps,
+        args.lr_warmup_epochs,
+        logger=logger)
 
     # ==== Optimizer ====
     # Following the SD3 paper, epsilon is set to 1e-15 in the args.
@@ -179,29 +192,24 @@ def main():
     logger.info("Optimizer Initialized with AdamW")
 
     # ==== Learning Rate Scheduler ====
-
-    args.max_train_steps, overrode_max_train_steps = compute_max_train_steps(
-        len(train_loader),
-        args.epochs,
-        args.gradient_accumulation_steps,
-        logger=logger,
-        max_train_steps=200 #args.max_train_steps,
+    lr_scheduler = get_cosine_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps = args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps = args.max_train_steps * accelerator.num_processes,
+        num_cycles=args.lr_cycles,
+        min_lr_ratio=args.min_lr_ratio,
     )
-    # There is a bug in Diffusers with get_schedule so we directly use the cosine schedule.
-    # lr_scheduler = get_cosine_schedule_with_warmup(
-    #     optimizer,
-    #     num_warmup_steps = args.lr_warmup_steps * accelerator.num_processes,
-    #     num_cycles=args.lr_cycles * accelerator.num_processes,
-    #     num_training_steps = args.max_train_steps * accelerator.num_processes,
-    # )
-    lr_scheduler = create_lr_range_test_scheduler(
-        optimizer=optimizer,
-        initial_lr=args.lr,
-        final_lr=1e-3,
-        total_iters=200 
-    )
-
     logger.info("Learning Rate Scheduler Initialized")
+
+    # ==== Checkpoint Steps ====
+    args.save_checkpoint_steps = compute_checkpoint_steps(
+        num_update_steps_per_epoch,
+        args.save_checkpoint_steps,
+        args.save_checkpoint_epochs,
+        logger=logger
+    )
+    checkpoint_offset = 0 if args.checkpoint_offset_warmup else args.lr_warmup_steps
+    logger.info(f"Checkpoint Offset: {checkpoint_offset}")
 
 
     # ======== Prepare all with Accelerator ========
@@ -211,12 +219,6 @@ def main():
     )
     logger.info("Accelerator Prepared")
     
-    # Preparing the loaders will change their length, so we need to update the number of steps.
-    num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
-        args.max_train_steps = num_update_steps_per_epoch * args.epochs
-
-        
     # ======== Resume from Checkpoint ========
     # Checkpoints are stored in the output directory under the "checkpoints" folder.
     # To load the latest checkpoint, set the resume_from_checkpoint argument to "latest".
@@ -245,30 +247,6 @@ def main():
     first_train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
     rest_train_loader = train_loader
 
-    free_memory()
-
-    transformer.eval()
-    log_validation( 
-        args=args,
-        accelerator=accelerator,
-        vae=vae,
-        transformer=accelerator.unwrap_model(transformer),
-        noise_scheduler=accelerator.unwrap_model(noise_scheduler),
-        data_loader=val_loader,
-        global_step=global_step,
-        denoise_steps=1,
-        num_vals=4,
-        ensemble_size=1,
-        use_zeros_start=True,
-        quantize=False,
-        logger=logger,
-        )
-    transformer.train()
-    logger.info("Validation Done")
-
-    accelerator.end_training()
-    return
-
 
     # ==== Print Training Info ====
     logger.info(f"Number of Update Steps per Epoch: {num_update_steps_per_epoch}")
@@ -277,6 +255,7 @@ def main():
     logger.info(f"Initial Global Step: {initial_global_step}")
     logger.info(f"Steps in Current Epoch: {steps_in_current_epoch}")
     logger.info(f"Max Train Steps: {args.max_train_steps}")
+
 
     # ======== TRAINING LOOP ========
     
@@ -335,10 +314,10 @@ def main():
 
                 # # Add noise according to rectified flow.
                 # noisy_mask_latents = (1.0 - noise_ratio) * mask_latents + noise_ratio * noise
-                noise_zeros = torch.zeros_like(mask_latents)
+                # noise_zeros = torch.zeros_like(mask_latents)
                 timesteps = torch.ones(batch_size).to(device) * 1000.0
 
-                transformer_input = torch.cat([image_latents, noise_zeros], dim=1)
+                # transformer_input = torch.cat([image_latents, noise_zeros], dim=1)
 
                 # ==== Prepare Prompt Embeds ====
                 prompt_embeds_batch = prompt_embeds.repeat(batch_size, 1, 1)
@@ -346,7 +325,7 @@ def main():
 
                 # ==== Forward Pass ====
                 model_pred = transformer(
-                        hidden_states=transformer_input,
+                        hidden_states=image_latents,
                         timestep=timesteps,
                         encoder_hidden_states=prompt_embeds_batch,
                         pooled_projections=pooled_prompt_embeds_batch,
@@ -395,7 +374,7 @@ def main():
                 accum_steps = 0
 
                 # ==== Save checkpoint ====
-                if global_step % args.save_checkpoint_steps == 0 and global_step > 0:
+                if global_step % args.save_checkpoint_steps == checkpoint_offset and global_step > 0:
                     accelerator.wait_for_everyone()
                     accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
                 

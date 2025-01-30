@@ -175,20 +175,17 @@ class PredictionPipeline(DiffusionPipeline):
 
     def generate_single_mask(self, batch_size, image_latents, prompt_embeds_batch, pooled_prompt_embeds_batch):
         # ==== Noise ====
-        if self.use_zeros_start:
-            noise = torch.zeros_like(image_latents)
-        else:
-            noise = torch.randn_like(image_latents)
+        noise = torch.randn_like(image_latents)
         latents = noise
         
         # ==== Denoise ====
         for t in tqdm(self.noise_scheduler.timesteps):
             timestep = t.expand(batch_size).to(self.device)
-            transformer_input = torch.cat([image_latents, latents], dim=1)
+            transformer_input = image_latents if self.use_zeros_start else torch.cat([image_latents, latents], dim=1)
 
             # predict the noise residual
             with torch.no_grad():
-                noise_pred = self.transformer(
+                prediction = self.transformer(
                     hidden_states=transformer_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds_batch,
@@ -198,10 +195,9 @@ class PredictionPipeline(DiffusionPipeline):
                 )[0]
 
             # compute the previous noisy sample x_t -> x_t-1
-            # latents = scheduler.step(noise_pred, t, latents).prev_sample
             if self.use_zeros_start:
-                latents = noise_pred
+                latents = prediction
             else:
-                latents = self.noise_scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.noise_scheduler.step(prediction, t, latents, return_dict=False)[0]
 
         return latents, noise

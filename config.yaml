@@ -48,7 +48,7 @@ training:
     type: str
     help: Path to checkpoint to resume from
   epochs:
-    default: 30 
+    default: 31
     type: int
     help: Number of epochs to train
   max_train_steps:
@@ -60,15 +60,23 @@ training:
     type: int
     help: Batch size for training
   gradient_accumulation_steps:
-    default: 4 #Change to 2 for 4 GPUs
+    default: 2 #Change to 4 for 2 GPUs
     type: int
     help: Gradient accumulation steps
   save_checkpoint_steps:
     default: 200 
     type: int
     help: Save checkpoint every n steps
+  save_checkpoint_epochs:
+    default: 3
+    type: int
+    help: Save checkpoint every n epochs (overrides save_checkpoint_steps)
+  checkpoint_offset_warmup:
+    default: true
+    type: bool
+    help: Offset the checkpoint step by the number of warmup steps 
   val_steps:
-    default: 100 
+    default: 157 
     type: int
     help: Validate every n steps
 
@@ -77,6 +85,33 @@ validation:
     default: checkpoint-2347
     type: str
     help: Path to checkpoint to load for validation
+
+
+learning_rate_scheduler:
+  lr:
+    default: 2.5e-5
+    type: float
+    help: Learning rate for training
+  min_lr_ratio:
+    default: 0.1
+    type: float
+    help: Ratio of the minimum lr to the initial lr 
+  lr_scheduler:
+    default: 'cosine'
+    type: str
+    help: Learning rate scheduler
+  lr_cycles:
+    default: 2.5
+    type: float
+    help: Number of cycles for learning rate scheduler
+  lr_warmup_steps:
+    default: null
+    type: int
+    help: Number of warmup steps for learning rate scheduler
+  lr_warmup_epochs:
+    default: 1
+    type: int
+    help: Number of warmup epochs for learning rate scheduler (overrides lr_warmup_steps)
 
 optimizer:
   adam_beta1:
@@ -95,25 +130,6 @@ optimizer:
     default: 1e-15
     type: float
     help: Epsilon for Adam optimizer
-
-learning_rate_scheduler:
-  lr:
-    # default: 0.0001
-    default: 5e-6 #1e-5 #3e-5
-    type: float
-    help: Learning rate for training
-  lr_scheduler:
-    default: 'cosine'
-    type: str
-    help: Learning rate scheduler
-  lr_cycles:
-    default: 4
-    type: float
-    help: Number of cycles for learning rate scheduler
-  lr_warmup_steps:
-    default: 79
-    type: int
-    help: Number of warmup steps for learning rate scheduler
 
 noise:
   weighting_scheme:
