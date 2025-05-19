@@ -61,7 +61,7 @@ def prepare_dataloader(data_name,
 
     # Load Datasets
     dataset_kwargs = {'transform': transform, 'augmentation': augmentation}
-    dataset = Trans10k(dataset_path, split=split, mode=mode, **dataset_kwargs)
+    dataset = Trans10k(dataset_path, split=split, mode=mode, difficulty=difficulty, **dataset_kwargs)
 
     # Set up data loaders
     data_loader = DataLoader(dataset, batch_size = batch_size, \

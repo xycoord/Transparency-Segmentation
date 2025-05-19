@@ -44,11 +44,11 @@ prompt_embeds:
 
 training:
   resume_from_checkpoint:
-    default: null 
+    default: latest
     type: str
     help: Path to checkpoint to resume from
   epochs:
-    default: 31
+    default: 43 
     type: int
     help: Number of epochs to train
   max_train_steps:
@@ -68,7 +68,7 @@ training:
     type: int
     help: Save checkpoint every n steps
   save_checkpoint_epochs:
-    default: 3
+    default: 1
     type: int
     help: Save checkpoint every n epochs (overrides save_checkpoint_steps)
   checkpoint_offset_warmup:
@@ -79,17 +79,26 @@ training:
     default: 157 
     type: int
     help: Validate every n steps
+  num_vals_train:
+    default: null
+    type: int
+    help: Number of validations per val_steps 
 
 validation:
   load_checkpoint: 
-    default: checkpoint-2347
+    default: checkpoint-5966
     type: str
     help: Path to checkpoint to load for validation
+  num_vals_test:
+    default: null 
+    type: int
+    help: Number of validations for test dataset
+  
 
 
 learning_rate_scheduler:
   lr:
-    default: 2.5e-5
+    default: 2e-6 #5e-6 #2.5e-5
     type: float
     help: Learning rate for training
   min_lr_ratio:
@@ -101,7 +110,7 @@ learning_rate_scheduler:
     type: str
     help: Learning rate scheduler
   lr_cycles:
-    default: 2.5
+    default: 3.5
     type: float
     help: Number of cycles for learning rate scheduler
   lr_warmup_steps:
@@ -151,7 +160,7 @@ noise:
 
 gradient_clipping: # Ignore this if using DeepSpeed 
   max_grad_norm:
-    default: 0.01 #1.0
+    default: 1.0 #0.1
     type: float
     help: Maximum gradient norm
       

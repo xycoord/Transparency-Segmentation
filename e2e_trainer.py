@@ -23,7 +23,7 @@ from utils.args_parser import parse_args
 from utils.stable_diffusion_3 import sample_timesteps, get_noise_ratio
 from utils.lr_scheduler import get_cosine_schedule_with_warmup, plot_lr_schedule
 
-from log_val import log_validation
+from e2e_log_val import log_validation
 
 logger = get_logger(__name__)
 
@@ -208,7 +208,7 @@ def main():
         args.save_checkpoint_epochs,
         logger=logger
     )
-    checkpoint_offset = 0 if args.checkpoint_offset_warmup else args.lr_warmup_steps
+    checkpoint_offset = args.lr_warmup_steps if args.checkpoint_offset_warmup else 0
     logger.info(f"Checkpoint Offset: {checkpoint_offset}")
 
 
@@ -246,7 +246,6 @@ def main():
 
     first_train_loader = accelerator.skip_first_batches(train_loader, steps_in_current_epoch)
     rest_train_loader = train_loader
-
 
     # ==== Print Training Info ====
     logger.info(f"Number of Update Steps per Epoch: {num_update_steps_per_epoch}")
@@ -332,22 +331,9 @@ def main():
                         return_dict=False,
                     )[0]
 
-
-                
                 # ==== Loss ====
                 # Let's start with calculating the loss in the latent space.
                 loss = torch.nn.functional.mse_loss(model_pred, mask_latents, reduction="mean")
-                # Weighted MSE Loss as per SD3 paper 
-                # NOTE We are using the "logit_norm" weighting scheme so the weighting is just 1s.
-                # Hence, the weighting is unimportant in the loss calculation.
-                # weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=noise_ratio)
-                # raw_mse_loss = weighting.float() * (model_pred.float() - target.float()) ** 2
-                # loss = raw_mse_loss.mean()
-
-                # We assume a fixed sample size of 128x128 for the above calculations.
-                # If the sample size changes, the loss will need to be adjusted accordingly:
-                # loss_per_sample = torch.mean(raw_mse_loss.reshape(batch_size, -1), 1)
-                # loss = loss_per_sample.mean()
 
                 accelerator.backward(loss)
                 optimizer.step()
@@ -366,7 +352,7 @@ def main():
                 gn = transformer.get_global_grad_norm()
                 grad_norm = gn.item() if gn is not None else 0.0
 
-                logs = {"loss": accum_loss/accum_steps, "lr": lr_scheduler.get_last_lr()[0], "grad_norm": grad_norm}
+                logs = {"loss": accum_loss/accum_steps, "lr": lr_scheduler.get_last_lr()[0], "grad_norm": grad_norm, "global_step": global_step}
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
                 
@@ -374,7 +360,8 @@ def main():
                 accum_steps = 0
 
                 # ==== Save checkpoint ====
-                if global_step % args.save_checkpoint_steps == checkpoint_offset and global_step > 0:
+                # FIXME: If save_checkpoint_steps == checkpoint_offset, then it will never save a checkpoint.
+                if global_step % args.save_checkpoint_steps == 0 and global_step > 0:
                     accelerator.wait_for_everyone()
                     accelerator.save_state(checkpoint_dir / f"checkpoint-{global_step}")
                 
@@ -384,21 +371,18 @@ def main():
                     free_memory()
 
                     transformer.eval()
+                    subpath = f"train_{args.val_difficulty}_{global_step}"
                     log_validation( 
                         args=args,
                         accelerator=accelerator,
                         vae=vae,
                         transformer=accelerator.unwrap_model(transformer),
-                        noise_scheduler=accelerator.unwrap_model(noise_scheduler),
                         data_loader=val_loader,
+                        subpath=subpath,
                         global_step=global_step,
-                        denoise_steps=1,
-                        num_vals=4,
-                        ensemble_size=1,
-                        use_zeros_start=True,
-                        quantize=False,
+                        num_vals=args.num_vals_train,
                         logger=logger,
-                        )
+                    )
                     transformer.train()
                     logger.info("Validation Done")
 

@@ -19,3 +19,5 @@ wandb==0.19.1
 
 # Data Augmentation
 albumentations
+
+xattr
