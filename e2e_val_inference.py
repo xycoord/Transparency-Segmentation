@@ -1,5 +1,6 @@
 import torch
 from pathlib import Path
+import os
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -18,10 +19,11 @@ from utils.checkpoint_utils import get_checkpoint_path, get_global_step_from_che
 from e2e_log_val import log_validation
 
 
-
 logger = get_logger(__name__)
 
 def main():
+
+    CUDA_VISIBLE_DEVICES = int(os.environ["LOCAL_RANK"])
 
     args = parse_args() # config.yaml
 
@@ -40,6 +42,7 @@ def main():
         mixed_precision=args.data_type, # necessary for inference?
         log_with="wandb",
     )
+
 
     # ==== Mixed Precision ====
     half_dtype = args.torch_dtype
@@ -104,13 +107,10 @@ def main():
     transformer.requires_grad_(False)
     logger.info("Transformer Loaded")
 
-        
     # ======== DATA LOADERS ======== 
     with accelerator.main_process_first():
-        # val_loader = get_trans10k_val_loader(args.dataset_path, difficulty=args.val_difficulty, batch_size=4, logger=logger)
         val_loader = get_trans10k_test_loader(args.dataset_path, difficulty=args.test_difficulty, batch_size=4, logger=logger)
-        # TODO: Generalize to Testing with a flag 
-
+        
 
     # ======== Prepare all with Accelerator ========
     # The accelerator wraps the components to handle multi-GPU training.

@@ -10,13 +10,13 @@ model:
 
 project_config:
   output_dir:
-    default: '/home/xycoord/output-e2e'
+    default: '/workspace/output-e2e'
     type: str
     help: Output directory
 
 dataset:
   dataset_path:
-    default: '/home/xycoord/models/Trans10k/'
+    default: '/workspace/Trans10k/'
     type: str
     help: Path to dataset
   dataset_name:
@@ -28,7 +28,7 @@ dataset:
     type: str
     help: Difficulty level for validation dataset ['easy', 'hard', 'mix']
   test_difficulty:
-    default: 'mix'
+    default: 'hard'
     type: str
     help: Difficulty level for test dataset ['easy', 'hard', 'mix']
   dataloader_num_workers:
@@ -44,7 +44,7 @@ prompt_embeds:
 
 training:
   resume_from_checkpoint:
-    default: latest
+    default: checkpoint-5966
     type: str
     help: Path to checkpoint to resume from
   epochs:

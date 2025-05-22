@@ -48,6 +48,7 @@ def resume_from_checkpoint(checkpoint_name, checkpoint_dir, accelerator, logger)
         global_step = 0
     else: # Load Checkpoint
         accelerator.wait_for_everyone()
+        logger.info(f"Loading checkpoint from {checkpoint_path}")
         accelerator.load_state(checkpoint_path)
         global_step = get_global_step_from_checkpoint(checkpoint_path)
     return global_step
