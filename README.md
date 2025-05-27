@@ -1,28 +1,54 @@
-# "Marigold" Transparency Segmentation v2 (SD3.5)
+# Transparency Segmentation (SD3.5)
 
-Training scripts for a Marigold inspired Transparency Segmentation model using Stable Diffusion 3.5 and the Trans10k Dataset.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/) [![PyTorch 2.8](https://img.shields.io/badge/PyTorch-2.8-ee4c2c.svg)](https://pytorch.org/)
 
-## End-to-End Fine Tuning (WIP)
+Training and inference scripts for a Transparency Segmentation model fine-tuned from Stable Diffusion 3.5 with the Trans10k Dataset.
 
-This branch will implement the 1-step end-to-end fine tuning method introducted in [Fine-Tuning Image-Conditional Diffusion Models is Easier than You Think](https://arxiv.org/pdf/2409.11355). If it works, this will make the model deterministic and much more efficient since each prediction requires only a single forward pass of the transformer.
+## End-to-End Fine Tuning
 
-Only parts of the following are accurate and relevant to this branch.
+This branch implements the 1-step end-to-end fine tuning method introducted in [Fine-Tuning Image-Conditional Diffusion Models is Easier than You Think](https://arxiv.org/pdf/2409.11355). This is deterministic, more efficient, and yields better results than the marigold inspired diffusion version I implemented on the [diffusion-ft](https://github.com/xycoord/Transparency-Segmentation/tree/diffusion-ft) branch.
+
+## Results
+
+This model performs on par with SOTA on the TransLab dataset.
+
+| Model | Difficulty | IOU    | Recall | MSE    |
+|-------|------------|--------|--------|--------|
+| TransLab | Mix     | 0.8763 |        |        |
+| Ours     |         | 0.8819 | 0.9456 | 0.0312 |
+| TransLab | Easy    | 0.9223 |        |        |
+| Ours     |         | 0.9214 | 0.9675 | 0.0189 |
+| TransLab | Hard    | 0.721  |        |        |
+| Ours     |         | 0.7346 | 0.8641 | 0.0772 |
+
+*Note: the IOU for Translab is mIOU since it separates Things and Stuff into separate segmenation classes. Therefore the metrics aren't exactly comparable*
+
+### Example Predictions
+
+| Prediction | Raw Pred | Ground Truth | Image |
+|-|-|-|-|-|-|
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_img.png?raw=true">  
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_img.png?raw=true">  
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_img.png?raw=true">  
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/5_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/5_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/5_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/5_img.png?raw=true">  
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/6_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/6_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/6_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/6_img.png?raw=true">  
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_img.png?raw=true">  
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_img.png?raw=true">  
+
+
+
 
 ## Method
 
-### *Inspiration from* Marigold  [[Web Page]](https://marigoldmonodepth.github.io/) [[Paper]](https://arxiv.org/abs/2312.02145)
+The core idea is to use pre-trained generative diffusion models as a starting point for image-to-image vision tasks. Unlike Marigold, which finetunes to a diffusion model, I use the vision transformer weights from stable diffusion as the starting point for an end-to-end model. 
 
-The idea I take from Marigold is to use pre-trained generative diffusion models as a starting point for image-to-image vision tasks. Marigold does this for monocular depth estimation and I use the same technique for transparent object image segmentation. The hope is that a) the model doesn't have to learn key vision concepts from scratch and b) will generalise well outside the training distribution.
+During training, both the image and mask are encoded into the latent space using the frozen VAE. The transformer takes the image latent as input and outputs a prediction of the mask latent. The transformer is trained with an MSE loss with the known mask latent.
 
-During training, both the image and mask are encoded into the latent space. The mask is then noised as per the noise schedule. The latents are concatenated along the channel dimension such that the transformer is conditioned both with the noisy latent (as in standard diffusion models) as well as the image latent. Since for inference, we begin with noise, the whole diffusion pipeline is conditioned on the image and generates a prediction of the mask.
-
-Since the process is stochastic, I ensemble multiple predictions with a mean and quantize the result to {0, 1} effectively having the predictions vote on the classification of each pixel.
+For inference, the input image is encoded. The transformer output (mask latent prediction) is decoded to give the result.
 
 ### Stable Diffusion 3.5 [[Paper]](https://arxiv.org/abs/2403.03206)
 
-This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model.
-The previous version used Stable Diffusion 2 as in Marigold. Notable changes include:
-- Rectified Flow ensures a 0 SNR at t=1 so multi-resolution noise is redundant and has been removed
+This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model. I specifically use **3.5 medium**. A previous version used Stable Diffusion 2. Notable changes include:
 - Predictions made at 1024 x 1024px with time step sampling optimized for this resolution during training
 - 16 channel latent space (vs 4 in SD2). This [has been shown](https://arxiv.org/pdf/2309.15807) to improve preservation of fine details leading to better reproduction of text. I am yet to conclude whether it improves reproduction of useful cues for transparent objects.
 
@@ -30,21 +56,31 @@ The previous version used Stable Diffusion 2 as in Marigold. Notable changes inc
 ## Setup 
 
 ### Dataset
-I use the Trans10k dataset from [Segmenting Transparent Objects in the Wild](https://arxiv.org/abs/2003.13948).
-It consists of pairs of images and transparency segmentation masks.
-Google Drive links to download the data can be found on [the paper's website](https://xieenze.github.io/projects/TransLAB/TransLAB.html).
-The dataloader in this repo is based on [the original](https://github.com/xieenze/Segment_Transparent_Objects) but is much simplified for our purposes.
+I use the Trans10k dataset from [Segmenting Transparent Objects in the Wild](https://arxiv.org/abs/2003.13948). It consists of pairs of images and transparency segmentation masks.
+
+Google Drive links to download the data can be found on [the paper's website](https://xieenze.github.io/projects/TransLAB/TransLAB.html). The dataloader in this repo is based on [the original](https://github.com/xieenze/Segment_Transparent_Objects) but is much simplified for our purposes.
+
+I found a few of the pairs were at 90° rotation from each other. In my dataloader, pairs with different dimensions will throw an error. I fixed these examples manually, creating an updated version of the dataset.
 
 ### Dependencies
-Tested using python 3.9 and 3.10. Newer versions <=3.12 will probably work.
+Tested using python 3.11 and pytorch 2.8.
 
-To install the dependencies into an active virtual environment:
+Inference requires `attr` for faster image saving. Install with `apt install attr` or similar.
+
+To install the dependencies into an active virtual environment or docker container:
 
 ```
 pip install -r requirements.txt
 ```
 
 *Note: Deepspeed 0.16 and Transformers create [this bug](https://github.com/microsoft/DeepSpeed/issues/6793) so use Deepseed 0.15.4 for now.*
+
+#### Hugging Face
+You will need a Hugging Face account and model access to download the stable diffusion weights. After setting this up and installing the python dependencies, run:
+```
+huggingface-cli login
+```
+and provide your access token.
 
 ### Environment Variables
 Examples given for Linux where the lines should be added to ~/.bashrc
@@ -54,10 +90,16 @@ To specify where the pretrained models are cached:
 export HF_HOME=/path/to/cache
 ```
 
-To speed up downloading of models (strongly recomended):
+To speed up downloading of models (strongly recommended):
 ```
 export HF_HUB_ENABLE_HF_TRANSFER=1
-``` 
+```
+
+To ensure multi-gpu setups work properly set the P2P mode e.g:
+```
+export NCCL_P2P_LEVEL=NVL
+```
+for NVLink.
 
 ### Config
 Arguments for the scripts are defined in `config.yaml` and loaded into `args`.
@@ -70,9 +112,11 @@ Make sure to set `output_dir` and `dataset_path` for your setup.
 I have successfully run training on:
 - 4x Nvidia L4 (Total 96GB VRAM)
 - ~100GB RAM
+Or
+- 4x Nvidia A40 (Total 192GB VRAM)
 
 And Inference on:
-- 1x Nvidia L4 (24GB VRAM)
+- 1x L4 (24GB) or 1x A40 (48GB)
 - 48GB RAM
 
 
@@ -112,7 +156,7 @@ This project uses the Accelerate DeepSpeed Plugin which is set-up automatically 
 
 ### Diffusers (🤗 Hugging Face) [[Docs]](https://huggingface.co/docs/diffusers/index)
 Diffusers is a toolkit for working with diffusion model. 
-We primarily use it to load the pre-trained models from Hugging Face Hub.
+We use it to load the pre-trained models from Hugging Face Hub.
 
 
 ## Tracking
