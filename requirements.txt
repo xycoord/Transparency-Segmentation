@@ -2,8 +2,8 @@
 matplotlib
 
 # PyTorch
-# torch==2.8.0
-# torchvision==0.22.0
+torch==2.8.0
+torchvision==0.22.0
 
 # Hugging Face
 accelerate==1.7.0

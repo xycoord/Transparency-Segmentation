@@ -10,7 +10,7 @@ def load_prompt_embeds(path):
     if not pooled_prompt_embeds_path.exists():
         raise FileNotFoundError(f"Pooled Prompt Embeddings not found at {pooled_prompt_embeds_path}")
     return torch.load(prompt_embeds_path, weights_only=True), torch.load(pooled_prompt_embeds_path, weights_only=True)
-    # Set weights_only=True to supress a security warning.
+    # Set weights_only=True to prevent running arbitrary unsafe code.
 
 def scale_lr(lr, effective_batch_size, logger=None):
     scaled_lr = lr * effective_batch_size

@@ -12,6 +12,9 @@ from diffusers import AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscre
 from diffusers.image_processor import VaeImageProcessor
 
 from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
+from deepspeed.runtime.zero.config import ZeroStageEnum
+from deepspeed.runtime.fp16.loss_scaler import LossScaler
+import torch.serialization
 
 from utils.args_parser import parse_args
 from dataloaders.dataset_configuration import get_trans10k_test_loader, get_trans10k_val_loader
@@ -131,6 +134,10 @@ def main():
             return
         else: # load checkpoint
             accelerator.wait_for_everyone()
+            torch.serialization.add_safe_globals([
+                ZeroStageEnum,
+                LossScaler
+            ])
             fp32_model = load_state_dict_from_zero_checkpoint(transformer, checkpoint_path)
             transformer = accelerator.prepare_model(fp32_model)
             transformer.to(half_dtype)
