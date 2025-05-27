@@ -26,7 +26,7 @@ This model performs on par with SOTA on the TransLab dataset.
 ### Example Predictions
 
 | Prediction | Raw Pred | Ground Truth | Image |
-|-|-|-|-|-|-|
+|-|-|-|-|
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/1_img.png?raw=true">  
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/2_img.png?raw=true">  
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/4_img.png?raw=true">  
