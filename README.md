@@ -6,7 +6,7 @@ Training and inference scripts for a Transparency Segmentation model fine-tuned 
 
 ## End-to-End Fine Tuning
 
-This branch implements the 1-step end-to-end fine tuning method introducted in [Fine-Tuning Image-Conditional Diffusion Models is Easier than You Think](https://arxiv.org/pdf/2409.11355). This is deterministic, more efficient, and yields better results than the marigold inspired diffusion version I implemented on the [diffusion-ft](https://github.com/xycoord/Transparency-Segmentation/tree/diffusion-ft) branch.
+This branch implements the 1-step end-to-end fine tuning method introduced in [Fine-Tuning Image-Conditional Diffusion Models is Easier than You Think](https://arxiv.org/pdf/2409.11355). This is deterministic, more efficient, and yields better results than the marigold inspired diffusion version I implemented on the [diffusion-ft](https://github.com/xycoord/Transparency-Segmentation/tree/diffusion-ft) branch.
 
 ## Results
 
@@ -14,14 +14,14 @@ This model performs on par with SOTA on the TransLab dataset.
 
 | Model | Difficulty | IOU    | Recall | MSE    |
 |-------|------------|--------|--------|--------|
-| TransLab | Mix     | 0.8763 |        |        |
-| Ours     |         | 0.8819 | 0.9456 | 0.0312 |
-| TransLab | Easy    | 0.9223 |        |        |
-| Ours     |         | 0.9214 | 0.9675 | 0.0189 |
-| TransLab | Hard    | 0.721  |        |        |
-| Ours     |         | 0.7346 | 0.8641 | 0.0772 |
+| TransLab  | Mix    | 0.8763 |        |        |
+| This work |        | 0.8819 | 0.9456 | 0.0312 |
+| TransLab  | Easy   | 0.9223 |        |        |
+| This work |        | 0.9214 | 0.9675 | 0.0189 |
+| TransLab  | Hard   | 0.721  |        |        |
+| This work |        | 0.7346 | 0.8641 | 0.0772 |
 
-*Note: the IOU for Translab is mIOU since it separates Things and Stuff into separate segmenation classes. Therefore the metrics aren't exactly comparable*
+*Note: the IOU for Translab is mIOU since it separates Things and Stuff into separate segmentation classes. Therefore the metrics aren't exactly comparable*
 
 ### Example Predictions
 
@@ -37,7 +37,6 @@ This model performs on par with SOTA on the TransLab dataset.
 
 
 
-
 ## Method
 
 The core idea is to use pre-trained generative diffusion models as a starting point for image-to-image vision tasks. Unlike Marigold, which finetunes to a diffusion model, I use the vision transformer weights from stable diffusion as the starting point for an end-to-end model. 
@@ -48,9 +47,17 @@ For inference, the input image is encoded. The transformer output (mask latent p
 
 ### Stable Diffusion 3.5 [[Paper]](https://arxiv.org/abs/2403.03206)
 
-This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model. I specifically use **3.5 medium**. A previous version used Stable Diffusion 2. Notable changes include:
+This repo assumes use of Stable Diffusion 3 or 3.5 as the pre-trained model. I specifically use **3.5 medium**. A previous version used Stable Diffusion 2. Notable changes include:
 - Predictions made at 1024 x 1024px with time step sampling optimized for this resolution during training
 - 16 channel latent space (vs 4 in SD2). This [has been shown](https://arxiv.org/pdf/2309.15807) to improve preservation of fine details leading to better reproduction of text. I am yet to conclude whether it improves reproduction of useful cues for transparent objects.
+
+## Comparison with Diffusion Approach
+
+The end-to-end approach outperforms my Marigold-inspired diffusion implementation in both speed and accuracy. It is much faster (single forward pass vs. ~100 denoising steps) and more accurate.
+
+The diffusion model's primary weakness is **transparency classification** - determining whether objects should be segmented as transparent or not. When it correctly identifies an object as transparent, it produces high-quality segmentations with accurate edges. However, it frequently misclassifies transparent objects as opaque (or vice versa).
+
+This might occur because transparency classification is determined by low-frequency content early in the denoising process. During training, only a small fraction of examples are of sufficiently early timesteps to teach the model this binary classification decision. By contrast, the end-to-end approach learns transparency classification from every training example.
 
 
 ## Limitations and Failure Cases
@@ -76,7 +83,7 @@ This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_img.png?raw=true">
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_img.png?raw=true">
 
-**Low resolution confusion**: May misclassify transparency when fine details are only visible at high resolution, likely due to VAE limitations.
+**Low resolution confusion**: May misclassify transparency when fine details are only visible at high resolution, perhaps due to VAE limitations.
 
 | Prediction | Raw Pred | Ground Truth | Image |
 |-|-|-|-|
@@ -85,7 +92,7 @@ This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_img.png?raw=true">
 
 
-**Ambiguous cases**: Some test examples are ambiguous even when at full resolution. The model will often dissagree with the test example in these cases but it is unclear which is correct.
+**Ambiguous cases**: Some test examples are ambiguous even when at full resolution. The model will often disagree with the test example in these cases but it is unclear which is correct.
 
 | Prediction | Raw Pred | Ground Truth | Image |
 |-|-|-|-|
@@ -100,6 +107,8 @@ This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_img.png?raw=true">
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_img.png?raw=true">
 
+**Fuzzy predictions**: The raw predictions often have soft, blurry edges whilst the ground truth has sharp boundaries. When quantised to binary masks, this results in boundary noise with serrated, non-contiguous edges.
+
 
 
 ## Setup 
@@ -107,7 +116,7 @@ This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model
 ### Dataset
 I use the Trans10k dataset from [Segmenting Transparent Objects in the Wild](https://arxiv.org/abs/2003.13948). It consists of pairs of images and transparency segmentation masks.
 
-Google Drive links to download the data can be found on [the paper's website](https://xieenze.github.io/projects/TransLAB/TransLAB.html). The dataloader in this repo is based on [the original](https://github.com/xieenze/Segment_Transparent_Objects) but is much simplified for our purposes.
+Google Drive links to download the data can be found on [the paper's website](https://xieenze.github.io/projects/TransLAB/TransLAB.html). The dataloader in this repo is based on [the original](https://github.com/xieenze/Segment_Transparent_Objects) but is much simplified for my purposes.
 
 I found a few of the pairs were at 90° rotation from each other. In my dataloader, pairs with different dimensions will throw an error. I fixed these examples manually, creating an updated version of the dataset.
 
@@ -205,9 +214,12 @@ This project uses the Accelerate DeepSpeed Plugin which is set-up automatically 
 
 ### Diffusers (🤗 Hugging Face) [[Docs]](https://huggingface.co/docs/diffusers/index)
 Diffusers is a toolkit for working with diffusion model. 
-We use it to load the pre-trained models from Hugging Face Hub.
+It's used to load the pre-trained models from Hugging Face Hub.
 
 
 ## Tracking
 I use Weights and Biases for experiment tracking. This is handled by Accelerate.
 To learn how to set this up or swap trackers see [this guide](https://huggingface.co/docs/accelerate/en/usage_guides/tracking).
+
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
