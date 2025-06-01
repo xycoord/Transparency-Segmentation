@@ -53,6 +53,55 @@ This repo assumes we're using Stable Diffusion 3 or 3.5 as the pre-trained model
 - 16 channel latent space (vs 4 in SD2). This [has been shown](https://arxiv.org/pdf/2309.15807) to improve preservation of fine details leading to better reproduction of text. I am yet to conclude whether it improves reproduction of useful cues for transparent objects.
 
 
+## Limitations and Failure Cases
+
+**Stickers on glass**: Consistently confused by opaque elements (stickers, labels) on transparent surfaces.
+
+| Prediction | Raw Pred | Ground Truth | Image |
+|-|-|-|-|
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2165_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2165_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2165_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2165_img.png?raw=true">
+
+
+**Reflections**: Frequently produces false positives on reflections or images of transparent objects.
+
+| Prediction | Raw Pred | Ground Truth | Image |
+|-|-|-|-|
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/50_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/50_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/50_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/50_img.png?raw=true">
+
+
+**Ambiguous transparency**: Struggles with boundary cases like opaque objects behind glass or items in transparent packaging. The model often classifies these as transparent whilst the dataset does not.
+
+| Prediction | Raw Pred | Ground Truth | Image |
+|-|-|-|-|
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/322_img.png?raw=true">
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/915_img.png?raw=true">
+
+**Low resolution confusion**: May misclassify transparency when fine details are only visible at high resolution, likely due to VAE limitations.
+
+| Prediction | Raw Pred | Ground Truth | Image |
+|-|-|-|-|
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/160_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/160_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/160_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/160_img.png?raw=true">
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/256_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/256_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/256_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/256_img.png?raw=true">
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2085_img.png?raw=true">
+
+
+**Ambiguous cases**: Some test examples are ambiguous even when at full resolution. The model will often dissagree with the test example in these cases but it is unclear which is correct.
+
+| Prediction | Raw Pred | Ground Truth | Image |
+|-|-|-|-|
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2138_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2138_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2138_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/2138_img.png?raw=true">
+
+
+**Dataset errors**: Some test examples appear to have incorrect ground truth annotations, though these remain uncorrected for benchmark consistency.
+
+| Prediction | Raw Pred | Ground Truth | Image |
+|-|-|-|-|
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/730_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/730_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/730_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/730_img.png?raw=true">
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/777_img.png?raw=true">
+|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/failure_cases/1180_img.png?raw=true">
+
+
+
 ## Setup 
 
 ### Dataset
