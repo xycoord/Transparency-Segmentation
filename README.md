@@ -35,6 +35,7 @@ This model performs on par with SOTA on the TransLab dataset.
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/7_img.png?raw=true">  
 |<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_maskq.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_pred.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_maskgt.png?raw=true">|<img width="200" src="https://github.com/xycoord/Transparency-Estimation/blob/main/sample_results/11_img.png?raw=true">  
 
+The complete set of test predictions can be found [here](https://drive.google.com/drive/folders/1h2iTkIZWSJRC--AV4-9pvcLmtyXiZd6X?usp=sharing) along with the checkpoint and amended dataset.
 
 
 ## Method
