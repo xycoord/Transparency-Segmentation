@@ -28,7 +28,7 @@ dataset:
     type: str
     help: Difficulty level for validation dataset ['easy', 'hard', 'mix']
   test_difficulty:
-    default: 'mix'
+    default: 'hard'
     type: str
     help: Difficulty level for test dataset ['easy', 'hard', 'mix']
   dataloader_num_workers:

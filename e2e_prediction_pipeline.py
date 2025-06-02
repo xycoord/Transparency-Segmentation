@@ -24,27 +24,38 @@ class MaskPipelineOutput(BaseOutput):
         self.maskq_pil = tensor_to_pil(mask_pred_q)
     
 
-
 class PredictionPipeline(DiffusionPipeline):
 
     def __init__(self,
-                 transformer:SD3Transformer2DModel,
-                 vae:AutoencoderKL,
+                 transformer: SD3Transformer2DModel,
+                 vae: AutoencoderKL,
                  ):
         super().__init__()
-            
+        
         self.register_modules(
             transformer=transformer,
             vae=vae,
         )
-
+        
         self.vae_image_processor = VaeImageProcessor(do_normalize=True)
-
+        
         # ==== Load Precomputed Prompt Embeddings ====
         prompt_embeds_path = './precomputed_prompt_embeddings/'
+
+
         prompt_embeds, pooled_prompt_embeds = load_prompt_embeds(prompt_embeds_path)
-        self.prompt_embeds = prompt_embeds.to(self.device)
-        self.pooled_prompt_embeds = pooled_prompt_embeds.to(self.device)
+
+        self.prompt_embeds = prompt_embeds
+        self.pooled_prompt_embeds = pooled_prompt_embeds
+
+
+    def to(self, device):
+        """Override to ensure embeddings move with the pipeline"""
+        super().to(device)
+        if hasattr(self, 'prompt_embeds'):
+            self.prompt_embeds = self.prompt_embeds.to(device)
+            self.pooled_prompt_embeds = self.pooled_prompt_embeds.to(device)
+        return self
 
 
     @torch.no_grad()
@@ -72,7 +83,7 @@ class PredictionPipeline(DiffusionPipeline):
 
         # ==== Preprare for Encoder ====
         images_normalized = self.vae_image_processor.normalize(input_images).to(self.device).to(torch.bfloat16) # Shouldn't be hard coded type
-        
+
         # ==== Encode ====
         image_latents = self.vae.encode(images_normalized).latent_dist.sample()
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
@@ -90,6 +101,9 @@ class PredictionPipeline(DiffusionPipeline):
                 joint_attention_kwargs=None,
                 return_dict=False,
             )[0]
+
+        # Cast prediction to match VAE's dtype
+        prediction = prediction.to(self.vae.dtype)
 
         # ==== Decode ====  
         prediction = (prediction / self.vae.config.scaling_factor) + self.vae.config.shift_factor

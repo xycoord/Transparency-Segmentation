@@ -107,6 +107,7 @@ def main():
         sample_size=128,
         qk_norm="rms_norm"
     )
+    transformer.eval()
     transformer.requires_grad_(False)
     logger.info("Transformer Loaded")
 

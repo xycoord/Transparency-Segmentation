@@ -187,7 +187,7 @@ accelerate launch --config_file accelerate_config.yaml trainer.py
 
 To run inference:
 ```
-accelerate launch --config_file accelerate_config.yaml val_inference.py
+accelerate launch --config_file accelerate_config_inference.yaml val_inference.py
 ```
 
 Other scripts don't use Accelerate and can be launched with python as normal.

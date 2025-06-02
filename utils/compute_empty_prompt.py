@@ -76,6 +76,9 @@ print("prompt_embeds.shape:", negative_prompt_embeds.shape)
 print("prompt_embeds.shape:", prompt_embeds.shape)
 print("pooled_prompt_embeds.shape:", pooled_prompt_embeds.shape)
 
+prompt_embeds = prompt_embeds.cpu()
+pooled_prompt_embeds = pooled_prompt_embeds.cpu()
+
 print("Saving prompt embeddings.")
 save_folder_path.mkdir(exist_ok=True, parents=True)
 torch.save(prompt_embeds, prompt_embeds_path)
