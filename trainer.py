@@ -23,7 +23,7 @@ from utils.args_parser import parse_args
 from utils.stable_diffusion_3 import sample_timesteps, get_noise_ratio
 from utils.lr_scheduler import get_cosine_schedule_with_warmup, plot_lr_schedule
 
-from e2e_log_val import log_validation
+from log_val import log_validation
 
 logger = get_logger(__name__)
 

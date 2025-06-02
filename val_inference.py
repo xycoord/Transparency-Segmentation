@@ -1,5 +1,6 @@
 import torch
 from pathlib import Path
+import os
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -11,17 +12,21 @@ from diffusers import AutoencoderKL, SD3Transformer2DModel, FlowMatchEulerDiscre
 from diffusers.image_processor import VaeImageProcessor
 
 from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
+from deepspeed.runtime.zero.config import ZeroStageEnum
+from deepspeed.runtime.fp16.loss_scaler import LossScaler
+import torch.serialization
 
 from utils.args_parser import parse_args
-from dataloaders.dataset_configuration import get_trans10k_val_loader
+from dataloaders.dataset_configuration import get_trans10k_test_loader, get_trans10k_val_loader
 from utils.checkpoint_utils import get_checkpoint_path, get_global_step_from_checkpoint
 from log_val import log_validation
-
 
 
 logger = get_logger(__name__)
 
 def main():
+
+    CUDA_VISIBLE_DEVICES = int(os.environ["LOCAL_RANK"])
 
     args = parse_args() # config.yaml
 
@@ -40,6 +45,7 @@ def main():
         mixed_precision=args.data_type, # necessary for inference?
         log_with="wandb",
     )
+
 
     # ==== Mixed Precision ====
     half_dtype = args.torch_dtype
@@ -95,73 +101,66 @@ def main():
         # use_safetensors=True,
         torch_dtype=full_dtype, # Load with full precision for safety
         low_cpu_mem_usage=False,
-        in_channels=32, # 16 for masks + 16 for images 
+        in_channels=16,
         out_channels=16,
-        # We've made a modification to the architecture so need to tell Diffusers that this is intended.
-        ignore_mismatched_sizes=True,
         # Sample size and qk norm use these values anyway, but we set them explicitly to be clear
         sample_size=128,
         qk_norm="rms_norm"
     )
+    transformer.eval()
     transformer.requires_grad_(False)
     logger.info("Transformer Loaded")
 
-    # ==== Noise Scheduler ====
-    # The noise scheduler used with SD3(.5)
-    noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-        args.base_model_path, subfolder="scheduler"
-    )
-    logger.info("Noise Scheduler Loaded")
-
-        
     # ======== DATA LOADERS ======== 
     with accelerator.main_process_first():
-        val_loader = get_trans10k_val_loader(args.dataset_path, difficulty=args.val_difficulty, logger=logger)
-        # TODO: Generalize to Testing with a flag 
-
+        val_loader = get_trans10k_test_loader(args.dataset_path, difficulty=args.test_difficulty, batch_size=4, logger=logger)
+        
 
     # ======== Prepare all with Accelerator ========
     # The accelerator wraps the components to handle multi-GPU training.
-    # transformer, test_loader, val_loader = accelerator.prepare(
-    #     transformer, test_loader, val_loader
-    # )
-    # logger.info("Accelerator Prepared")
+    val_loader = accelerator.prepare(val_loader)
+    logger.info("Accelerator Prepared")
  
     # ======== Resume from Checkpoint ========
     # Checkpoints are stored in the output directory under the "checkpoints" folder.
     # To load the latest checkpoint, set the resume_from_checkpoint argument to "latest".
     # To load a specific checkpoint, set the resume_from_checkpoint argument to the name of the checkpoint.
+
     if args.load_checkpoint:
         checkpoint_name = args.load_checkpoint
         checkpoint_path = get_checkpoint_path(checkpoint_name, checkpoint_dir)
 
         if checkpoint_path is None or not checkpoint_path.exists():
-            logger.info(f"Checkpoint '{checkpoint_name}' does not exist. Terminating.")
+            logger.info(f"checkpoint '{checkpoint_name}' does not exist. terminating.")
             return
-        else: # Load Checkpoint
+        else: # load checkpoint
             accelerator.wait_for_everyone()
+            torch.serialization.add_safe_globals([
+                ZeroStageEnum,
+                LossScaler
+            ])
             fp32_model = load_state_dict_from_zero_checkpoint(transformer, checkpoint_path)
             transformer = accelerator.prepare_model(fp32_model)
             transformer.to(half_dtype)
             global_step = get_global_step_from_checkpoint(checkpoint_path)
     else:
-        logger.info("No Checkpoint specified. Terminating.")
+        logger.info("no checkpoint specified. terminating.")
         return
 
     # transformer = transformer.to(half_dtype).to(device)
     # global_step = 0
 
+    subpath = f"test_{args.test_difficulty}_{global_step}"
+
     log_validation( 
         args=args,
         accelerator=accelerator,
         vae=vae,
-        transformer=accelerator.unwrap_model(transformer),
-        noise_scheduler=accelerator.unwrap_model(noise_scheduler),
+        transformer=transformer,
         data_loader=val_loader,
-        global_step=global_step,
-        denoise_steps=20,
-        num_vals=4,
-        ensemble_size=10,
+        subpath=subpath,
+        num_vals=args.num_vals_test,
+        # num_vals=32,
         logger=logger,
     )
 
